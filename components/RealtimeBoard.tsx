@@ -1,0 +1,159 @@
+"use client"
+
+import { useEffect, useState, useRef, useCallback } from "react"
+import { supabase } from "@/lib/supabaseClient"
+import { updateItemStatus } from "@/app/actions"
+import { toast } from "sonner"
+import { RefreshCw, ChefHat, GlassWater, Clock } from "lucide-react"
+import KitchenSoundAlert from "@/components/KitchenSoundAlert"
+
+export default function RealtimeBoard({
+  kategori,
+  initialItems
+}: {
+  kategori: "MAKANAN" | "MINUMAN",
+  initialItems: any[]
+}) {
+  const [items, setItems] = useState<any[]>(initialItems)
+  const [lastRefresh, setLastRefresh] = useState(new Date())
+  const [countdown, setCountdown] = useState(15)
+  const prevCountRef = useRef<number>(initialItems.length)
+  const REFRESH_INTERVAL = 15 // seconds
+
+  // Auto-refresh: poll every 15s via router refresh
+  useEffect(() => {
+    const interval = setInterval(() => {
+      window.location.reload()
+    }, REFRESH_INTERVAL * 1000)
+
+    // Countdown timer for UX
+    const countdownTimer = setInterval(() => {
+      setCountdown(c => {
+        if (c <= 1) return REFRESH_INTERVAL
+        return c - 1
+      })
+    }, 1000)
+
+    return () => {
+      clearInterval(interval)
+      clearInterval(countdownTimer)
+    }
+  }, [])
+
+  // Supabase realtime
+  useEffect(() => {
+    const channel = supabase
+      .channel(`bill-items-${kategori}`)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'BillItem' },
+        (payload) => {
+          if (payload.eventType === 'INSERT') {
+            toast.info('Pesanan baru masuk!', { description: 'Halaman akan diperbarui...' })
+            window.location.reload()
+          } else if (payload.eventType === 'UPDATE') {
+            setItems(current =>
+              current.map(item => item.id === payload.new.id ? { ...item, status: payload.new.status } : item)
+            )
+          }
+        }
+      )
+      .subscribe()
+
+    return () => { supabase.removeChannel(channel) }
+  }, [kategori])
+
+  const activeItems = items.filter(i => i.status !== "SIAP")
+
+  const handleStatusChange = async (id: string, namaItem: string, newStatus: "DIKIRIM" | "DIPROSES" | "SIAP") => {
+    // Optimistic update
+    setItems(current => current.map(i => i.id === id ? { ...i, status: newStatus } : i))
+    try {
+      await updateItemStatus(id, newStatus)
+      if (newStatus === "DIPROSES") toast.warning(`Sedang diproses: ${namaItem}`)
+      if (newStatus === "SIAP") toast.success(`Siap diantar: ${namaItem}!`)
+    } catch (err) {
+      toast.error("Gagal mengupdate status, coba lagi.")
+      setItems(current => current.map(i => i.id === id ? { ...i, status: "DIKIRIM" } : i))
+    }
+  }
+
+  const Icon = kategori === "MAKANAN" ? ChefHat : GlassWater
+
+  return (
+    <div>
+      <KitchenSoundAlert newOrderCount={activeItems.length} />
+      {/* Auto-refresh indicator */}
+      <div className="flex items-center justify-between mb-4 text-xs text-zinc-500">
+        <div className="flex items-center gap-2">
+          <Icon className="w-4 h-4" />
+          <span>{activeItems.length} pesanan aktif</span>
+        </div>
+        <div className="flex items-center gap-2">
+          <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+          <span>Auto-refresh dalam <span className="font-bold text-emerald-400">{countdown}s</span></span>
+          <button
+            onClick={() => window.location.reload()}
+            className="flex items-center gap-1 px-2 py-1 bg-zinc-800 hover:bg-zinc-700 rounded-lg transition"
+          >
+            <RefreshCw className="w-3 h-3" /> Refresh
+          </button>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-4">
+        {activeItems.length === 0 ? (
+          <div className="text-zinc-500 italic col-span-full text-center py-12">
+            <Icon className="w-12 h-12 mx-auto mb-3 opacity-20" />
+            <p>Tidak ada pesanan aktif.</p>
+          </div>
+        ) : (
+          activeItems.map(item => (
+            <div key={item.id} className={`bg-zinc-900 border p-4 rounded-xl flex flex-col justify-between transition-all ${item.status === 'DIPROSES' ? 'border-amber-700 shadow-amber-900/20 shadow-lg' : 'border-zinc-800'}`}>
+              <div>
+                <div className="flex justify-between items-start mb-2">
+                  <div>
+                    <span className="font-bold text-2xl text-emerald-400">{item.qty}x</span>
+                    <span className="text-xs text-zinc-500 ml-2">{item.bill?.sofa?.nama || 'Take Away'}</span>
+                  </div>
+                  <span className={`px-2 py-1 text-xs font-bold rounded-md ${item.status === 'DIPROSES' ? 'bg-amber-600 animate-pulse' : 'bg-zinc-700 text-zinc-300'}`}>
+                    {item.status}
+                  </span>
+                </div>
+                <h3 className="font-bold text-xl mb-1">{item.namaItem}</h3>
+                {item.catatan && (
+                  <p className="text-sm text-amber-400 italic bg-amber-900/20 p-2 rounded flex items-start gap-1">
+                    <span>⚠️</span> {item.catatan}
+                  </p>
+                )}
+                <div className="flex items-center gap-1 mt-2 text-xs text-zinc-500">
+                  <Clock className="w-3 h-3" />
+                  {new Date(item.bill?.waktuBuka).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}
+                </div>
+              </div>
+
+              <div className="flex gap-2 mt-4 pt-4 border-t border-zinc-800">
+                {item.status === "DIKIRIM" && (
+                  <button
+                    onClick={() => handleStatusChange(item.id, item.namaItem, "DIPROSES")}
+                    className="flex-1 bg-amber-600 hover:bg-amber-500 py-2 rounded-lg font-bold text-sm transition active:scale-95"
+                  >
+                    🔥 Proses
+                  </button>
+                )}
+                {(item.status === "DIKIRIM" || item.status === "DIPROSES") && (
+                  <button
+                    onClick={() => handleStatusChange(item.id, item.namaItem, "SIAP")}
+                    className="flex-1 bg-emerald-600 hover:bg-emerald-500 py-2 rounded-lg font-bold text-sm transition active:scale-95"
+                  >
+                    ✅ Siap
+                  </button>
+                )}
+              </div>
+            </div>
+          ))
+        )}
+      </div>
+    </div>
+  )
+}

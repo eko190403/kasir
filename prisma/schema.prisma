@@ -1,0 +1,171 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+enum SofaStatus {
+  KOSONG
+  TERISI
+  MENUNGGU_MAKANAN
+  SIAP_BAYAR
+}
+
+model Sofa {
+  id        String      @id @default(uuid())
+  nama      String
+  kapasitas Int
+  status    SofaStatus  @default(KOSONG)
+  
+  bills     Bill[]
+  reservasi Reservasi[]
+}
+
+enum MenuKategori {
+  MAKANAN
+  MINUMAN
+}
+
+model MenuItem {
+  id       String       @id @default(uuid())
+  nama     String
+  harga    Int
+  kategori MenuKategori
+  tersedia Boolean      @default(true)
+
+  billItems BillItem[]
+}
+
+enum BillTipe {
+  DINE_IN
+  TAKE_AWAY
+  RESERVATION
+}
+
+enum BillStatus {
+  TERBUKA
+  LUNAS
+  BATAL
+}
+
+model Bill {
+  id           String     @id @default(uuid())
+  nomorBill    Int?       // Auto-increment per hari, e.g. 1, 2, 3...
+  tipe         BillTipe
+  sofaId       String?
+  waktuBuka    DateTime   @default(now())
+  waktuTutup   DateTime?
+  subtotal     Int        @default(0)
+  diskon       Int        @default(0)
+  pajak        Int        @default(0)
+  service      Int        @default(0)
+  total        Int        @default(0)
+  metodeBayar  String?
+  status       BillStatus @default(TERBUKA)
+  kasirId      String?
+  shiftId      String?
+  
+  sofa         Sofa?      @relation(fields: [sofaId], references: [id])
+  kasir        User?      @relation("KasirBill", fields: [kasirId], references: [id])
+  shift        Shift?     @relation(fields: [shiftId], references: [id])
+  billItems    BillItem[]
+}
+
+enum BillItemStatus {
+  DIKIRIM
+  DIPROSES
+  SIAP
+}
+
+model BillItem {
+  id          String         @id @default(uuid())
+  billId      String
+  menuItemId  String
+  namaItem    String
+  harga       Int
+  qty         Int
+  catatan     String?
+  status      BillItemStatus @default(DIKIRIM)
+  diretur     Boolean        @default(false)
+  isVoid      Boolean        @default(false)
+  isComp      Boolean        @default(false)
+  otorisasiOleh String?
+  alasanVoidComp String?
+
+  bill        Bill           @relation(fields: [billId], references: [id], onDelete: Cascade)
+  menuItem    MenuItem       @relation(fields: [menuItemId], references: [id])
+}
+
+enum ReservasiStatus {
+  PENDING
+  CONFIRMED
+  CANCELLED
+  COMPLETED
+}
+
+model Reservasi {
+  id          String   @id @default(uuid())
+  sofaId      String
+  nama        String
+  jam         DateTime
+  jumlahOrang Int
+  deposit     Int?
+  status      ReservasiStatus @default(PENDING)
+
+  sofa        Sofa     @relation(fields: [sofaId], references: [id])
+}
+
+model Shift {
+  id             String    @id @default(uuid())
+  kasirId        String
+  waktuBuka      DateTime  @default(now())
+  waktuTutup     DateTime?
+  kasAwal        Int
+  kasAkhir       Int?
+  pengeluaran    Int      @default(0)
+  catatanPengeluaran String?
+  totalPenjualan Int?
+
+  kasir          User      @relation(fields: [kasirId], references: [id])
+  bills          Bill[]
+}
+
+enum Peran {
+  PELAYAN
+  BARTENDER
+  DAPUR
+  KASIR
+  MANAJER
+}
+
+model User {
+  id       String     @id @default(uuid())
+  nama     String
+  peran    Peran
+  pin      String?    // PIN untuk login (hashed)
+
+  bills    Bill[]     @relation("KasirBill")
+  shifts   Shift[]
+  auditLogs AuditLog[]
+}
+
+model AuditLog {
+  id      String   @id @default(uuid())
+  userId  String?
+  aksi    String
+  entitas String
+  detail  String
+  waktu   DateTime @default(now())
+
+  user    User?    @relation(fields: [userId], references: [id])
+}
+
+model Setting {
+  id    String @id @default(uuid())
+  kunci String @unique // "PAJAK", "SERVICE_CHARGE", "PEMBULATAN_HARI_INI" 
+  nilai String
+}
