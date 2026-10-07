@@ -1,10 +1,10 @@
 "use client"
 
-import { useEffect, useState, useRef, useCallback } from "react"
+import { useEffect, useState, useRef } from "react"
 import { supabase } from "@/lib/supabaseClient"
-import { updateItemStatus } from "@/app/actions"
+import { updateItemStatus, getKitchenItems } from "@/app/actions"
 import { toast } from "sonner"
-import { RefreshCw, ChefHat, GlassWater, Clock } from "lucide-react"
+import { RefreshCw, ChefHat, GlassWater } from "lucide-react"
 import KitchenSoundAlert from "@/components/KitchenSoundAlert"
 
 export default function RealtimeBoard({
@@ -16,51 +16,50 @@ export default function RealtimeBoard({
 }) {
   const [items, setItems] = useState<any[]>(initialItems)
   const [lastRefresh, setLastRefresh] = useState(new Date())
-  const [countdown, setCountdown] = useState(15)
+  const [connected, setConnected] = useState(false)
   const prevCountRef = useRef<number>(initialItems.length)
-  const REFRESH_INTERVAL = 15 // seconds
 
-  // Auto-refresh: poll every 15s via router refresh
-  useEffect(() => {
-    const interval = setInterval(() => {
-      window.location.reload()
-    }, REFRESH_INTERVAL * 1000)
+  const fetchFresh = async () => {
+    try {
+      const fresh = await getKitchenItems(kategori)
+      setItems(fresh)
+      setLastRefresh(new Date())
+    } catch { /* silent */ }
+  }
 
-    // Countdown timer for UX
-    const countdownTimer = setInterval(() => {
-      setCountdown(c => {
-        if (c <= 1) return REFRESH_INTERVAL
-        return c - 1
-      })
-    }, 1000)
-
-    return () => {
-      clearInterval(interval)
-      clearInterval(countdownTimer)
-    }
-  }, [])
-
-  // Supabase realtime
+  // Supabase Realtime — replace polling entirely
   useEffect(() => {
     const channel = supabase
-      .channel(`bill-items-${kategori}`)
+      .channel(`kitchen-${kategori}-v2`)
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'BillItem' },
-        (payload) => {
+        async (payload) => {
           if (payload.eventType === 'INSERT') {
-            toast.info('Pesanan baru masuk!', { description: 'Halaman akan diperbarui...' })
-            window.location.reload()
+            // Fetch fresh data from server (includes joins with bill/sofa)
+            await fetchFresh()
           } else if (payload.eventType === 'UPDATE') {
             setItems(current =>
-              current.map(item => item.id === payload.new.id ? { ...item, status: payload.new.status } : item)
+              current.map(item =>
+                item.id === payload.new.id ? { ...item, status: payload.new.status } : item
+              ).filter(item => item.status !== 'SIAP')
             )
           }
         }
       )
-      .subscribe()
+      .subscribe((status) => {
+        setConnected(status === 'SUBSCRIBED')
+      })
 
-    return () => { supabase.removeChannel(channel) }
+    // Fallback: re-fetch every 5s if realtime disconnects
+    const fallback = setInterval(() => {
+      if (!connected) fetchFresh()
+    }, 5000)
+
+    return () => {
+      supabase.removeChannel(channel)
+      clearInterval(fallback)
+    }
   }, [kategori])
 
   const activeItems = items.filter(i => i.status !== "SIAP")
@@ -83,17 +82,18 @@ export default function RealtimeBoard({
   return (
     <div>
       <KitchenSoundAlert newOrderCount={activeItems.length} />
-      {/* Auto-refresh indicator */}
+      {/* Realtime status indicator */}
       <div className="flex items-center justify-between mb-4 text-xs text-zinc-500">
         <div className="flex items-center gap-2">
           <Icon className="w-4 h-4" />
           <span>{activeItems.length} pesanan aktif</span>
         </div>
         <div className="flex items-center gap-2">
-          <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-          <span>Auto-refresh dalam <span className="font-bold text-emerald-400">{countdown}s</span></span>
+          <div className={`w-2 h-2 rounded-full ${connected ? 'bg-emerald-500 animate-pulse' : 'bg-amber-500 animate-pulse'}`} />
+          <span>{connected ? 'Realtime aktif' : 'Menghubungkan...'}</span>
+          <span className="text-zinc-600">· Diperbarui {lastRefresh.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}</span>
           <button
-            onClick={() => window.location.reload()}
+            onClick={fetchFresh}
             className="flex items-center gap-1 px-2 py-1 bg-zinc-800 hover:bg-zinc-700 rounded-lg transition"
           >
             <RefreshCw className="w-3 h-3" /> Refresh

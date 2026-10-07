@@ -20,9 +20,17 @@ export async function calculateBillTotal(billId: string) {
 
   if (!bill) throw new Error("Bill not found")
 
-  const settings = await getSettings()
+  // Use snapshot rates from bill; fallback to Settings for legacy bills (pajakPct=0 && servicePct=0)
+  let pajakRate = bill.pajakPct
+  let serviceRate = bill.servicePct
 
-  // 1. Hitung subtotal: harga * qty untuk item yang tidak diretur
+  if (pajakRate === 0 && serviceRate === 0) {
+    const settings = await getSettings()
+    pajakRate = settings.pajak
+    serviceRate = settings.serviceCharge
+  }
+
+  // 1. Subtotal: only items that are not returned/voided/comped
   let subtotal = 0
   bill.billItems.forEach(item => {
     if (!item.diretur && !item.isVoid && !item.isComp) {
@@ -30,37 +38,30 @@ export async function calculateBillTotal(billId: string) {
     }
   })
 
-  // 2. Diskon (sudah ada di tabel bill, diset oleh KASIR/MANAJER, default 0)
+  // 2. Diskon
   const diskon = bill.diskon
-
-  // 3. Service charge (berdasarkan persentase)
-  // Aturan urutan: subtotal - diskon + service charge + pajak
   let totalSetelahDiskon = subtotal - diskon
   if (totalSetelahDiskon < 0) totalSetelahDiskon = 0
 
-  const service = Math.round(totalSetelahDiskon * (settings.serviceCharge / 100))
+  // 3. Service charge
+  const service = Math.round(totalSetelahDiskon * (serviceRate / 100))
 
-  // 4. Pajak (dihitung dari subtotal - diskon + service charge)
+  // 4. Pajak (on subtotal-diskon+service)
   const totalKenaPajak = totalSetelahDiskon + service
-  const pajak = Math.round(totalKenaPajak * (settings.pajak / 100))
+  const pajak = Math.round(totalKenaPajak * (pajakRate / 100))
 
   // 5. Total
   let total = totalKenaPajak + pajak
 
-  // 6. Pembulatan (opsional, jika diset true)
+  // 6. Pembulatan (only from Settings, not snapshot)
+  const settings = await getSettings()
   if (settings.pembulatanRatusan) {
     total = Math.round(total / 100) * 100
   }
 
-  // Simpan nilai terhitung ke snapshot di bill
   await prisma.bill.update({
     where: { id: billId },
-    data: {
-      subtotal,
-      service,
-      pajak,
-      total,
-    }
+    data: { subtotal, service, pajak, total }
   })
 
   return { subtotal, diskon, service, pajak, total }

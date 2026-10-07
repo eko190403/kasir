@@ -153,6 +153,37 @@ export default function EODReportClient() {
             </div>
           )}
 
+          {/* bySofa Aggregate */}
+          {report.bySofa && Object.keys(report.bySofa).length > 0 && (
+            <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6">
+              <h3 className="font-bold mb-4 flex items-center gap-2"><TrendingUp className="w-4 h-4 text-emerald-400" /> Performa per Meja / Sofa</h3>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead className="text-xs text-zinc-500">
+                    <tr>
+                      <th className="text-left pb-2">Nama Meja / Tipe</th>
+                      <th className="text-right pb-2">Jumlah Bill</th>
+                      <th className="text-right pb-2">Rata-rata/Bill</th>
+                      <th className="text-right pb-2">Total Pendapatan</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-zinc-800">
+                    {Object.entries(report.bySofa)
+                      .sort((a: any, b: any) => b[1].total - a[1].total)
+                      .map(([key, data]: [string, any]) => (
+                        <tr key={key}>
+                          <td className="py-2">{data.nama}</td>
+                          <td className="py-2 text-right">{data.count}</td>
+                          <td className="py-2 text-right text-zinc-400">{fmt(data.average)}</td>
+                          <td className="py-2 text-right font-bold text-emerald-400">{fmt(data.total)}</td>
+                        </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
           {/* Void & Comp Detail */}
           {(report.voidItems.length > 0 || report.compItems.length > 0) && (
             <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6">

@@ -64,7 +64,9 @@ model Bill {
   subtotal     Int        @default(0)
   diskon       Int        @default(0)
   pajak        Int        @default(0)
+  pajakPct     Int        @default(0) // Snapshot %
   service      Int        @default(0)
+  servicePct   Int        @default(0) // Snapshot %
   total        Int        @default(0)
   metodeBayar  String?
   status       BillStatus @default(TERBUKA)
@@ -75,6 +77,8 @@ model Bill {
   kasir        User?      @relation("KasirBill", fields: [kasirId], references: [id])
   shift        Shift?     @relation(fields: [shiftId], references: [id])
   billItems    BillItem[]
+
+  @@index([sofaId, status])
 }
 
 enum BillItemStatus {

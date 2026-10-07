@@ -7,6 +7,22 @@ import { redirect } from "next/navigation"
 import bcrypt from "bcryptjs"
 import { setSession, logout as clearSession, getSession } from "@/lib/auth"
 
+// ─── Auth Helpers ───────────────────────────────────────────────────
+async function requireSession() {
+  const session = await getSession()
+  if (!session) throw new Error("Anda harus login terlebih dahulu.")
+  return session
+}
+
+async function requireManager() {
+  const session = await requireSession()
+  if (session.user.peran !== 'MANAJER') {
+    throw new Error("Aksi ini hanya diperbolehkan untuk MANAJER.")
+  }
+  return session
+}
+// ────────────────────────────────────────────────────────────────────
+
 export async function createTakeAwayOrder() {
   const session = await getSession()
   if (!session) throw new Error("Anda harus login")
@@ -21,13 +37,20 @@ export async function createTakeAwayOrder() {
   const todayCount = await prisma.bill.count({ where: { waktuBuka: { gte: todayStart } } })
   const nomorBill = todayCount + 1
 
+  const pajakSetting = await prisma.setting.findUnique({ where: { kunci: 'PAJAK' } })
+  const serviceSetting = await prisma.setting.findUnique({ where: { kunci: 'SERVICE_CHARGE' } })
+  const pajakPct = parseInt(pajakSetting?.nilai || '10')
+  const servicePct = parseInt(serviceSetting?.nilai || '5')
+
   const bill = await prisma.bill.create({
     data: {
       tipe: "TAKE_AWAY",
       status: "TERBUKA",
       kasirId,
       shiftId,
-      nomorBill
+      nomorBill,
+      pajakPct,
+      servicePct
     }
   })
   redirect(`/bill/${bill.id}`)
@@ -39,6 +62,21 @@ export async function updateItemStatus(itemId: string, status: "DIKIRIM" | "DIPR
     data: { status }
   })
 }
+
+export async function getKitchenItems(kategori: "MAKANAN" | "MINUMAN") {
+  return prisma.billItem.findMany({
+    where: {
+      status: { not: "SIAP" },
+      menuItem: { kategori },
+      isVoid: false,
+      isComp: false,
+      diretur: false,
+    },
+    orderBy: { bill: { waktuBuka: 'asc' } },
+    include: { menuItem: true, bill: { include: { sofa: true } } }
+  })
+}
+
 
 export async function createOrGetActiveBill(sofaId: string) {
   // Check if sofa has an open bill
@@ -62,6 +100,11 @@ export async function createOrGetActiveBill(sofaId: string) {
     const todayCount = await prisma.bill.count({ where: { waktuBuka: { gte: todayStart } } })
     const nomorBill = todayCount + 1
 
+    const pajakSetting = await prisma.setting.findUnique({ where: { kunci: 'PAJAK' } })
+    const serviceSetting = await prisma.setting.findUnique({ where: { kunci: 'SERVICE_CHARGE' } })
+    const pajakPct = parseInt(pajakSetting?.nilai || '10')
+    const servicePct = parseInt(serviceSetting?.nilai || '5')
+
     // Open new bill
     bill = await prisma.bill.create({
       data: {
@@ -70,7 +113,9 @@ export async function createOrGetActiveBill(sofaId: string) {
         status: "TERBUKA",
         kasirId,
         shiftId,
-        nomorBill
+        nomorBill,
+        pajakPct,
+        servicePct
       },
       include: { billItems: true }
     })
@@ -86,9 +131,12 @@ export async function createOrGetActiveBill(sofaId: string) {
 }
 
 export async function cleanupEmptyBills() {
+  const tenMinsAgo = new Date(Date.now() - 10 * 60 * 1000)
+  
   const emptyBills = await prisma.bill.findMany({
     where: { 
       status: "TERBUKA",
+      waktuBuka: { lt: tenMinsAgo },
       billItems: { none: {} } 
     }
   })
@@ -286,21 +334,8 @@ export async function returnItem(itemId: string, alasan: string) {
 }
 
 export async function voidItem(itemId: string, alasan: string, pin: string) {
+  await requireManager()
   const session = await getSession()
-  const pinManajer = await prisma.setting.findUnique({ where: { kunci: 'PIN_MANAJER' } })
-  
-  // Support both hashed (new) and plain (legacy) PIN
-  let pinValid = false
-  if (pinManajer) {
-    try {
-      pinValid = await bcrypt.compare(pin, pinManajer.nilai)
-    } catch {
-      pinValid = pin === pinManajer.nilai
-    }
-  } else {
-    pinValid = pin === '123456'
-  }
-  if (!pinValid) throw new Error('PIN Manajer salah')
 
   const item = await prisma.billItem.findUnique({ where: { id: itemId } })
   if (!item) throw new Error('Item not found')
@@ -323,20 +358,8 @@ export async function voidItem(itemId: string, alasan: string, pin: string) {
 }
 
 export async function compItem(itemId: string, alasan: string, pin: string) {
+  await requireManager()
   const session = await getSession()
-  const pinManajer = await prisma.setting.findUnique({ where: { kunci: 'PIN_MANAJER' } })
-
-  let pinValid = false
-  if (pinManajer) {
-    try {
-      pinValid = await bcrypt.compare(pin, pinManajer.nilai)
-    } catch {
-      pinValid = pin === pinManajer.nilai
-    }
-  } else {
-    pinValid = pin === '123456'
-  }
-  if (!pinValid) throw new Error('PIN Manajer salah')
 
   const item = await prisma.billItem.findUnique({ where: { id: itemId } })
   if (!item) throw new Error('Item not found')
@@ -561,6 +584,7 @@ export async function updateReservasiStatus(id: string, status: 'CONFIRMED' | 'C
 }
 
 export async function updateSetting(kunci: string, nilai: string) {
+  await requireManager()
   // If updating PIN_MANAJER, hash it first
   let finalNilai = nilai
   if (kunci === 'PIN_MANAJER') {
@@ -575,12 +599,14 @@ export async function updateSetting(kunci: string, nilai: string) {
 }
 
 export async function addUser(nama: string, peran: string, pin: string) {
+  await requireManager()
   const hashedPin = await bcrypt.hash(pin, 10)
   await prisma.user.create({ data: { nama, peran: peran as any, pin: hashedPin } })
   revalidatePath('/staf')
 }
 
 export async function editUser(id: string, nama: string, peran: string, pin?: string) {
+  await requireManager()
   const data: any = { nama, peran: peran as any }
   if (pin) {
     data.pin = await bcrypt.hash(pin, 10)
@@ -590,36 +616,71 @@ export async function editUser(id: string, nama: string, peran: string, pin?: st
 }
 
 export async function deleteUser(id: string) {
+  await requireManager()
   await prisma.user.update({ where: { id }, data: { isDeleted: true } })
   revalidatePath('/staf')
 }
 
-export async function loginWithPin(pin: string) {
-  // Find user by PIN
-  // Note: Since users log in with PIN, we can either check all users and verify hash, 
-  // or use a simpler approach. Since we only have a few users, we can fetch all and check.
-  const users = await prisma.user.findMany({ where: { isDeleted: false } })
-  let loggedInUser = null
+// --- Rate Limiter (in-memory, resets on server restart) ---
+const loginAttempts = new Map<string, { count: number; lockedUntil: number }>()
+const MAX_ATTEMPTS = 5
+const LOCK_DURATION_MS = 15 * 60 * 1000 // 15 menit
 
-  for (const u of users) {
-    if (u.pin && await bcrypt.compare(pin, u.pin)) {
-      loggedInUser = u
-      break
-    }
-  }
-
-  if (!loggedInUser) {
-    return { error: "PIN salah atau tidak ditemukan" }
-  }
-
-  await setSession({
-    id: loggedInUser.id,
-    nama: loggedInUser.nama,
-    peran: loggedInUser.peran
+export async function getActiveUsers() {
+  const users = await prisma.user.findMany({
+    where: { isDeleted: false },
+    select: { id: true, nama: true, peran: true },
+    orderBy: { nama: 'asc' }
   })
-  
+  return users
+}
+
+export async function loginWithUserAndPin(userId: string, pin: string) {
+  if (!userId || !pin) return { error: 'Pilih nama dan masukkan PIN' }
+
+  const now = Date.now()
+  const attempts = loginAttempts.get(userId)
+
+  if (attempts && now < attempts.lockedUntil) {
+    const menitSisa = Math.ceil((attempts.lockedUntil - now) / 60000)
+    return { error: `Akun terkunci. Coba lagi dalam ${menitSisa} menit.` }
+  }
+
+  const user = await prisma.user.findUnique({ where: { id: userId, isDeleted: false } })
+  if (!user || !user.pin) return { error: 'Pengguna tidak ditemukan.' }
+
+  const pinValid = await bcrypt.compare(pin, user.pin)
+
+  if (!pinValid) {
+    const current = loginAttempts.get(userId) || { count: 0, lockedUntil: 0 }
+    const newCount = current.count + 1
+    if (newCount >= MAX_ATTEMPTS) {
+      loginAttempts.set(userId, { count: newCount, lockedUntil: now + LOCK_DURATION_MS })
+      return { error: `PIN salah ${MAX_ATTEMPTS}x. Akun dikunci selama 15 menit.` }
+    }
+    loginAttempts.set(userId, { count: newCount, lockedUntil: 0 })
+    return { error: `PIN salah. Sisa percobaan: ${MAX_ATTEMPTS - newCount}` }
+  }
+
+  // Login berhasil — reset counter
+  loginAttempts.delete(userId)
+
+  await setSession({ id: user.id, nama: user.nama, peran: user.peran })
   return { success: true }
 }
+
+// Backward compat alias (for any remaining code)
+export async function loginWithPin(pin: string) {
+  const users = await prisma.user.findMany({ where: { isDeleted: false } })
+  for (const u of users) {
+    if (u.pin && await bcrypt.compare(pin, u.pin)) {
+      await setSession({ id: u.id, nama: u.nama, peran: u.peran })
+      return { success: true }
+    }
+  }
+  return { error: 'PIN salah atau tidak ditemukan' }
+}
+
 
 export async function logoutUser() {
   await clearSession()
@@ -701,6 +762,19 @@ export async function getEndOfDayReport(tanggal: string) {
     byMetode[m].total += bill.total
   }
 
+  const bySofa: Record<string, { nama: string; count: number; total: number; average: number }> = {}
+  for (const bill of bills) {
+    const sId = bill.sofaId || 'TAKE_AWAY'
+    const sNama = bill.sofa?.nama || (bill.tipe === 'TAKE_AWAY' ? 'Take Away' : 'Lainnya')
+    
+    if (!bySofa[sId]) {
+      bySofa[sId] = { nama: sNama, count: 0, total: 0, average: 0 }
+    }
+    bySofa[sId].count++
+    bySofa[sId].total += bill.total
+    bySofa[sId].average = Math.round(bySofa[sId].total / bySofa[sId].count)
+  }
+
   return {
     tanggal,
     bills,
@@ -715,6 +789,7 @@ export async function getEndOfDayReport(tanggal: string) {
     voidItems,
     compItems,
     byMetode,
+    bySofa,
     shifts,
     auditLogs
   }

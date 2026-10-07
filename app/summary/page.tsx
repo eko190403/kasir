@@ -272,6 +272,7 @@ export default async function SummaryPage({ searchParams }: { searchParams: Prom
                       <span className="flex items-center justify-center w-6 h-6 rounded-full bg-zinc-800 text-zinc-400 text-xs font-bold">{idx + 1}</span>
                       <span className="font-medium text-zinc-200 group-hover:text-white transition">{s.nama}</span>
                       <span className="bg-violet-500/20 text-violet-300 text-xs px-2 py-0.5 rounded-full">{s.transaksi} transaksi</span>
+                      <span className="text-zinc-500 text-xs">Rata-rata: Rp {Math.round(s.total / s.transaksi).toLocaleString('id-ID')}</span>
                     </span>
                     <span className="font-bold text-emerald-400">Rp {s.total.toLocaleString('id-ID')}</span>
                   </div>
