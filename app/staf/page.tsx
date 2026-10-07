@@ -4,7 +4,7 @@ import StafClient from "@/components/StafClient"
 export const instant = false
 
 export default async function StafPage() {
-  const users = await prisma.user.findMany({ orderBy: { nama: 'asc' } })
+  const users = await prisma.user.findMany({ where: { isDeleted: false }, orderBy: { nama: 'asc' } })
 
   return (
     <main className="container mx-auto p-4 space-y-6">

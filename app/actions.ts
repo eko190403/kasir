@@ -384,11 +384,7 @@ export async function editMenuItem(id: string, nama: string, harga: number, kate
 }
 
 export async function deleteMenuItem(id: string) {
-  try {
-    await prisma.menuItem.delete({ where: { id } })
-  } catch (e) {
-    throw new Error('Menu tidak bisa dihapus karena sudah ada di riwayat pesanan. Silakan ubah statusnya menjadi Habis.')
-  }
+  await prisma.menuItem.update({ where: { id }, data: { isDeleted: true, tersedia: false } })
   revalidatePath('/menu')
   revalidatePath('/')
 }
@@ -406,11 +402,10 @@ export async function editSofa(id: string, nama: string, kapasitas: number) {
 }
 
 export async function deleteSofa(id: string) {
-  try {
-    await prisma.sofa.delete({ where: { id } })
-  } catch (e) {
-    throw new Error('Sofa tidak bisa dihapus karena memiliki riwayat tagihan. Anda dapat mengganti namanya saja (misal: "GUDANG").')
-  }
+  // Check if sofa has active/open bill
+  const activeBill = await prisma.bill.findFirst({ where: { sofaId: id, status: 'TERBUKA' } })
+  if (activeBill) throw new Error('Meja sedang digunakan dan memiliki tagihan aktif. Tutup tagihan terlebih dahulu.')
+  await prisma.sofa.update({ where: { id }, data: { isDeleted: true } })
   revalidatePath('/sofas')
   revalidatePath('/')
 }
@@ -595,11 +590,7 @@ export async function editUser(id: string, nama: string, peran: string, pin?: st
 }
 
 export async function deleteUser(id: string) {
-  try {
-    await prisma.user.delete({ where: { id } })
-  } catch (e) {
-    throw new Error('Staf tidak bisa dihapus karena memiliki riwayat shift atau transaksi. Anda tetap bisa mengganti namanya.')
-  }
+  await prisma.user.update({ where: { id }, data: { isDeleted: true } })
   revalidatePath('/staf')
 }
 
@@ -607,7 +598,7 @@ export async function loginWithPin(pin: string) {
   // Find user by PIN
   // Note: Since users log in with PIN, we can either check all users and verify hash, 
   // or use a simpler approach. Since we only have a few users, we can fetch all and check.
-  const users = await prisma.user.findMany()
+  const users = await prisma.user.findMany({ where: { isDeleted: false } })
   let loggedInUser = null
 
   for (const u of users) {
@@ -729,34 +720,33 @@ export async function getEndOfDayReport(tanggal: string) {
   }
 }
 
-export async function searchRiwayatBill(query: string) {
-  if (!query) return []
-  
-  // check if query is a number (for nomorBill)
-  const isNumber = !isNaN(Number(query))
+export async function searchRiwayatBill(query: string, page: number = 1) {
+  const PAGE_SIZE = 15
+  const skip = (page - 1) * PAGE_SIZE
 
-  const whereClause: any = {
-    status: 'LUNAS'
+  const whereClause: any = { status: 'LUNAS' }
+
+  if (query.trim()) {
+    const isNumber = !isNaN(Number(query)) && query.trim() !== ''
+    if (isNumber) {
+      whereClause.nomorBill = Number(query)
+    } else {
+      whereClause.id = { contains: query }
+    }
   }
 
-  if (isNumber) {
-    whereClause.nomorBill = Number(query)
-  } else {
-    // If string, we might want to search by ID or customer name (not implemented, but id is string)
-    whereClause.id = { contains: query }
-  }
+  const [bills, total] = await Promise.all([
+    prisma.bill.findMany({
+      where: whereClause,
+      include: { kasir: true, sofa: true },
+      orderBy: { waktuTutup: 'desc' },
+      skip,
+      take: PAGE_SIZE
+    }),
+    prisma.bill.count({ where: whereClause })
+  ])
 
-  const bills = await prisma.bill.findMany({
-    where: whereClause,
-    include: {
-      kasir: true,
-      sofa: true
-    },
-    orderBy: { waktuTutup: 'desc' },
-    take: 20
-  })
-
-  return bills
+  return { bills, total, page, pageSize: PAGE_SIZE, totalPages: Math.ceil(total / PAGE_SIZE) }
 }
 
 export async function exportDatabaseToCSV() {

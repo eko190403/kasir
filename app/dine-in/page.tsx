@@ -9,6 +9,7 @@ export default async function DineInPage() {
   await cleanupEmptyBills()
 
   const sofas = await prisma.sofa.findMany({
+    where: { isDeleted: false },
     orderBy: { nama: 'asc' },
     include: {
       bills: {

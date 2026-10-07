@@ -5,6 +5,7 @@ export const instant = false
 
 export default async function SofasPage() {
   const sofas = await prisma.sofa.findMany({
+    where: { isDeleted: false },
     orderBy: { nama: 'asc' }
   })
 

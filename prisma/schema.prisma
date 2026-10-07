@@ -20,6 +20,7 @@ model Sofa {
   nama      String
   kapasitas Int
   status    SofaStatus  @default(KOSONG)
+  isDeleted Boolean     @default(false)
   
   bills     Bill[]
   reservasi Reservasi[]
@@ -36,6 +37,7 @@ model MenuItem {
   harga    Int
   kategori MenuKategori
   tersedia Boolean      @default(true)
+  isDeleted Boolean     @default(false)
 
   billItems BillItem[]
 }
@@ -147,6 +149,7 @@ model User {
   nama     String
   peran    Peran
   pin      String?    // PIN untuk login (hashed)
+  isDeleted Boolean   @default(false)
 
   bills    Bill[]     @relation("KasirBill")
   shifts   Shift[]

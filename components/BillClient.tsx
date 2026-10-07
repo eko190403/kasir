@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect, useCallback } from "react"
 import { addMenuItemToBill, closeBill, returnItem, applyDiscount, voidItem, compItem, updateItemQty, cancelBill } from "@/app/actions"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
@@ -39,6 +39,53 @@ export default function BillClient({
   const [actionType, setActionType] = useState<"RETUR" | "VOID" | "COMP">("RETUR")
   const [actionAlasan, setActionAlasan] = useState("")
   const [actionPin, setActionPin] = useState("")
+
+  // Keyboard Shortcuts
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Don't fire if user is typing in an input/textarea
+      const tag = (e.target as HTMLElement).tagName
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') {
+        // Allow Escape to close modals even from inside inputs
+        if (e.key === 'Escape') {
+          setShowPayment(false)
+          setShowCancel(false)
+          setShowDiscount(false)
+          setActionItemId(null)
+        }
+        return
+      }
+
+      switch (e.key) {
+        case 'F2':
+          e.preventDefault()
+          setShowPayment(v => !v)
+          setShowCancel(false)
+          break
+        case 'F4':
+          e.preventDefault()
+          setShowDiscount(v => !v)
+          break
+        case 'Escape':
+          e.preventDefault()
+          setShowPayment(false)
+          setShowCancel(false)
+          setShowDiscount(false)
+          setActionItemId(null)
+          break
+        case 'm':
+        case 'M':
+          setMenuFilter(f => f === 'MAKANAN' ? 'SEMUA' : 'MAKANAN')
+          break
+        case 'b':
+        case 'B':
+          setMenuFilter(f => f === 'MINUMAN' ? 'SEMUA' : 'MINUMAN')
+          break
+      }
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [])
 
   const handleAddItem = async (menuId: string) => {
     setLoading(true)
@@ -331,10 +378,20 @@ export default function BillClient({
               <button 
                 onClick={() => setShowPayment(true)}
                 disabled={loading || initialBillItems.length === 0}
-                className="flex-1 bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-3 rounded-lg disabled:opacity-50 transition"
+                className="flex-1 bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-3 rounded-lg disabled:opacity-50 transition flex items-center justify-center gap-2"
               >
                 Bayar (Checkout)
+                <span className="text-xs bg-emerald-800/70 px-1.5 py-0.5 rounded font-mono">F2</span>
               </button>
+            </div>
+
+            {/* Keyboard shortcut hints */}
+            <div className="mt-2 flex flex-wrap gap-2 text-[10px] text-zinc-600">
+              <span><kbd className="bg-zinc-800 px-1 rounded">F2</kbd> Bayar</span>
+              <span><kbd className="bg-zinc-800 px-1 rounded">F4</kbd> Diskon</span>
+              <span><kbd className="bg-zinc-800 px-1 rounded">M</kbd> Filter Makanan</span>
+              <span><kbd className="bg-zinc-800 px-1 rounded">B</kbd> Filter Minuman</span>
+              <span><kbd className="bg-zinc-800 px-1 rounded">Esc</kbd> Tutup Panel</span>
             </div>
           ) : showCancel ? (
             <div className="mt-4 p-4 border border-red-900 bg-red-950/30 rounded-lg space-y-3">

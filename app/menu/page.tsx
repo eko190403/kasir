@@ -6,6 +6,7 @@ export const instant = false
 
 export default async function MenuPage() {
   const menuItems = await prisma.menuItem.findMany({
+    where: { isDeleted: false },
     orderBy: [{ kategori: 'asc' }, { nama: 'asc' }]
   })
 
