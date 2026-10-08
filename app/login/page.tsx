@@ -145,7 +145,7 @@ export default function LoginPage() {
               {/* Virtual numpad */}
               <div className="grid grid-cols-3 gap-2 mb-3">
                 {["1","2","3","4","5","6","7","8","9","","0","⌫"].map((d, i) => (
-                  d === "" ? <div key={i} /> :
+                  d === "" ? <div key="empty" /> :
                   d === "⌫" ? (
                     <button key="del" type="button" onClick={handlePinDelete}
                       className="py-3 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-300 font-bold transition active:scale-95 text-lg">

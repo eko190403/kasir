@@ -2,7 +2,7 @@
 
 import { useEffect } from 'react'
 import { useRouter, usePathname } from 'next/navigation'
-import { logout } from '@/app/actions'
+import { logoutUser } from '@/app/actions'
 import { toast } from 'sonner'
 
 // 10 minutes in milliseconds
@@ -22,9 +22,9 @@ export default function AutoLogout() {
       clearTimeout(timeoutId)
       timeoutId = setTimeout(async () => {
         try {
-          await logout()
+          await logoutUser()
           toast.warning('Sesi berakhir karena tidak ada aktivitas (idle 10 menit).')
-          // router.push is handled by the redirect in logout() if it has one, 
+          // router.push is handled by the redirect in logoutUser() if it has one, 
           // or we can refresh to trigger middleware.
           window.location.href = '/login'
         } catch (e) {

@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma"
 import { calculateBillTotal } from "@/lib/bill"
 import { revalidatePath } from "next/cache"
 import { redirect } from "next/navigation"
+import { connection } from 'next/server'
 import bcrypt from "bcryptjs"
 import { setSession, logout as clearSession, getSession } from "@/lib/auth"
 import { getStartOfDayWIB, getEndOfDayWIB } from "@/lib/timezone"
@@ -132,6 +133,7 @@ export async function createOrGetActiveBill(sofaId: string) {
 }
 
 export async function cleanupEmptyBills() {
+  await connection()
   const tenMinsAgo = new Date(Date.now() - 10 * 60 * 1000)
   
   const emptyBills = await prisma.bill.findMany({

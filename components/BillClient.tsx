@@ -364,35 +364,37 @@ export default function BillClient({
           </div>
 
           {!showPayment && !showCancel ? (
-            <div className="flex gap-2 mt-4">
-              <button onClick={() => window.open(`/print/bill/${billId}`, '_blank')} className="px-4 py-3 bg-zinc-700 hover:bg-zinc-600 rounded-lg text-sm transition">
-                🖨️ Cetak Bill
-              </button>
-              <button 
-                onClick={() => setShowCancel(true)}
-                disabled={loading}
-                className="px-4 py-3 bg-red-900/50 hover:bg-red-900 text-red-400 font-bold rounded-lg disabled:opacity-50 transition border border-red-800"
-              >
-                Batal Bill
-              </button>
-              <button 
-                onClick={() => setShowPayment(true)}
-                disabled={loading || initialBillItems.length === 0}
-                className="flex-1 bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-3 rounded-lg disabled:opacity-50 transition flex items-center justify-center gap-2"
-              >
-                Bayar (Checkout)
-                <span className="text-xs bg-emerald-800/70 px-1.5 py-0.5 rounded font-mono">F2</span>
-              </button>
-            </div>
+            <>
+              <div className="flex gap-2 mt-4">
+                <button onClick={() => window.open(`/print/bill/${billId}`, '_blank')} className="px-4 py-3 bg-zinc-700 hover:bg-zinc-600 rounded-lg text-sm transition">
+                  🖨️ Cetak Bill
+                </button>
+                <button 
+                  onClick={() => setShowCancel(true)}
+                  disabled={loading}
+                  className="px-4 py-3 bg-red-900/50 hover:bg-red-900 text-red-400 font-bold rounded-lg disabled:opacity-50 transition border border-red-800"
+                >
+                  Batal Bill
+                </button>
+                <button 
+                  onClick={() => setShowPayment(true)}
+                  disabled={loading || initialBillItems.length === 0}
+                  className="flex-1 bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-3 rounded-lg disabled:opacity-50 transition flex items-center justify-center gap-2"
+                >
+                  Bayar (Checkout)
+                  <span className="text-xs bg-emerald-800/70 px-1.5 py-0.5 rounded font-mono">F2</span>
+                </button>
+              </div>
 
-            {/* Keyboard shortcut hints */}
-            <div className="mt-2 flex flex-wrap gap-2 text-[10px] text-zinc-600">
-              <span><kbd className="bg-zinc-800 px-1 rounded">F2</kbd> Bayar</span>
-              <span><kbd className="bg-zinc-800 px-1 rounded">F4</kbd> Diskon</span>
-              <span><kbd className="bg-zinc-800 px-1 rounded">M</kbd> Filter Makanan</span>
-              <span><kbd className="bg-zinc-800 px-1 rounded">B</kbd> Filter Minuman</span>
-              <span><kbd className="bg-zinc-800 px-1 rounded">Esc</kbd> Tutup Panel</span>
-            </div>
+              {/* Keyboard shortcut hints */}
+              <div className="mt-2 flex flex-wrap gap-2 text-[10px] text-zinc-600">
+                <span><kbd className="bg-zinc-800 px-1 rounded">F2</kbd> Bayar</span>
+                <span><kbd className="bg-zinc-800 px-1 rounded">F4</kbd> Diskon</span>
+                <span><kbd className="bg-zinc-800 px-1 rounded">M</kbd> Filter Makanan</span>
+                <span><kbd className="bg-zinc-800 px-1 rounded">B</kbd> Filter Minuman</span>
+                <span><kbd className="bg-zinc-800 px-1 rounded">Esc</kbd> Tutup Panel</span>
+              </div>
+            </>
           ) : showCancel ? (
             <div className="mt-4 p-4 border border-red-900 bg-red-950/30 rounded-lg space-y-3">
               <h4 className="font-bold text-red-400 text-sm mb-2">Batalkan Seluruh Bill</h4>

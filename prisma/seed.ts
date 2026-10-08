@@ -31,16 +31,34 @@ async function main() {
   
   // 3. Data Sofa
   const sofas = [
-    { nama: 'Sofa VIP 1', kapasitas: 8 },
-    { nama: 'Sofa VIP 2', kapasitas: 8 },
-    { nama: 'Sofa VIP 3', kapasitas: 8 },
-    { nama: 'Meja Bar 1', kapasitas: 2 },
-    { nama: 'Meja Bar 2', kapasitas: 2 },
-    { nama: 'Meja Bar 3', kapasitas: 2 },
-    { nama: 'Meja Reguler 1', kapasitas: 4 },
-    { nama: 'Meja Reguler 2', kapasitas: 4 },
-    { nama: 'Meja Reguler 3', kapasitas: 4 },
-    { nama: 'Meja Reguler 4', kapasitas: 4 },
+    // 1st Floor
+    { nama: 'S1', kapasitas: 4 },
+    { nama: 'S2', kapasitas: 4 },
+    { nama: 'S3', kapasitas: 4 },
+    { nama: 'S4', kapasitas: 4 },
+    { nama: 'D1', kapasitas: 6 },
+    { nama: 'D2', kapasitas: 6 },
+    { nama: 'D3', kapasitas: 6 },
+    { nama: 'D4', kapasitas: 6 },
+    { nama: 'D5', kapasitas: 6 },
+    { nama: 'D6', kapasitas: 6 },
+    { nama: 'L1', kapasitas: 8 },
+    { nama: 'L2', kapasitas: 8 },
+    { nama: 'L3', kapasitas: 8 },
+    { nama: 'L4', kapasitas: 8 },
+    { nama: 'L5', kapasitas: 8 },
+    { nama: 'L6', kapasitas: 8 },
+    { nama: 'VIP', kapasitas: 8 },
+    // 2nd Floor
+    { nama: 'S5', kapasitas: 4 },
+    { nama: 'S6', kapasitas: 4 },
+    { nama: 'S7', kapasitas: 4 },
+    { nama: 'S8', kapasitas: 4 },
+    { nama: 'S9', kapasitas: 4 },
+    { nama: 'S10', kapasitas: 4 },
+    { nama: 'S11', kapasitas: 4 },
+    { nama: 'S12', kapasitas: 4 },
+    { nama: 'VVIP', kapasitas: 10 },
   ]
 
   for (const sofa of sofas) {

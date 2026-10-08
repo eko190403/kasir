@@ -4,7 +4,7 @@ import { useEffect, useState, useRef } from "react"
 import { supabase } from "@/lib/supabaseClient"
 import { updateItemStatus, getKitchenItems } from "@/app/actions"
 import { toast } from "sonner"
-import { RefreshCw, ChefHat, GlassWater } from "lucide-react"
+import { RefreshCw, ChefHat, GlassWater, Clock } from "lucide-react"
 import KitchenSoundAlert from "@/components/KitchenSoundAlert"
 
 export default function RealtimeBoard({

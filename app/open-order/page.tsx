@@ -1,3 +1,4 @@
+import { connection } from 'next/server'
 import { prisma } from "@/lib/prisma"
 import { cleanupEmptyBills } from "@/app/actions"
 import OpenOrderClient from "@/components/OpenOrderClient"
@@ -6,6 +7,7 @@ import { ShoppingCart } from "lucide-react"
 export const instant = false
 
 export default async function OpenOrderPage() {
+  await connection()
   await cleanupEmptyBills()
   const openBills = await prisma.bill.findMany({
     where: { status: 'TERBUKA' },
