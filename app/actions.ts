@@ -10,18 +10,85 @@ import { setSession, logout as clearSession, getSession } from "@/lib/auth"
 import { getStartOfDayWIB, getEndOfDayWIB } from "@/lib/timezone"
 
 // ─── Auth Helpers ───────────────────────────────────────────────────
+const ROLE_ORDER = ["PELAYAN", "BARTENDER", "DAPUR", "KASIR", "MANAJER"] as const
+
+type UserRole = (typeof ROLE_ORDER)[number]
+
 async function requireSession() {
   const session = await getSession()
   if (!session) throw new Error("Anda harus login terlebih dahulu.")
   return session
 }
 
-async function requireManager() {
+async function requireRole(allowedRoles: UserRole[]) {
   const session = await requireSession()
-  if (session.user.peran !== 'MANAJER') {
-    throw new Error("Aksi ini hanya diperbolehkan untuk MANAJER.")
+  const currentRole = session.user.peran as UserRole
+  if (!allowedRoles.includes(currentRole)) {
+    throw new Error(`Aksi ini hanya diperbolehkan untuk role: ${allowedRoles.join(", ")}.`)
   }
   return session
+}
+
+async function comparePinWithCandidates(pin: string, candidates: Array<string | null | undefined>) {
+  const normalizedCandidates = [...new Set(candidates.filter((candidate): candidate is string => Boolean(candidate && candidate.trim())))]
+
+  for (const candidate of normalizedCandidates) {
+    try {
+      if (candidate === pin) return true
+      if (await bcrypt.compare(pin, candidate)) return true
+    } catch {
+      if (candidate === pin) return true
+    }
+  }
+
+  return false
+}
+
+async function verifyManagerPin(pin: string) {
+  const [managerUser, managerSetting] = await Promise.all([
+    prisma.user.findFirst({ where: { peran: 'MANAJER', isDeleted: false } }),
+    prisma.setting.findUnique({ where: { kunci: 'PIN_MANAJER' } })
+  ])
+
+  const pinValid = await comparePinWithCandidates(pin, [managerUser?.pin, managerSetting?.nilai])
+  if (!pinValid) {
+    throw new Error("PIN manajer salah.")
+  }
+}
+
+async function requireManager(pin?: string) {
+  const session = await requireSession()
+
+  if (pin) {
+    await verifyManagerPin(pin)
+    return session
+  }
+
+  if (session.user.peran !== 'MANAJER') {
+    throw new Error('Aksi ini hanya dapat dilakukan oleh manager atau dengan PIN manager yang valid.')
+  }
+
+  return session
+}
+
+async function requireMenuManager() {
+  return requireRole(["MANAJER", "KASIR"])
+}
+
+function normalizeMenuPayload(nama: string, harga: number, kategori: "MAKANAN" | "MINUMAN") {
+  const cleanedNama = nama.trim()
+  if (!cleanedNama) throw new Error("Nama menu wajib diisi.")
+
+  const parsedHarga = Number(harga)
+  if (!Number.isFinite(parsedHarga) || parsedHarga < 0) {
+    throw new Error("Harga menu harus berupa angka yang valid dan tidak negatif.")
+  }
+
+  if (!['MAKANAN', 'MINUMAN'].includes(kategori)) {
+    throw new Error("Kategori menu tidak valid.")
+  }
+
+  return { cleanedNama, parsedHarga }
 }
 // ────────────────────────────────────────────────────────────────────
 
@@ -81,13 +148,25 @@ export async function getKitchenItems(kategori: "MAKANAN" | "MINUMAN") {
 
 export async function createOrGetActiveBill(sofaId: string) {
   return await prisma.$transaction(async (tx) => {
-    // Check if sofa has an open bill
+    const sofa = await tx.sofa.findUnique({ where: { id: sofaId } })
+    if (!sofa || sofa.isDeleted) {
+      throw new Error('Meja tidak ditemukan atau tidak aktif.')
+    }
+
     let bill = await tx.bill.findFirst({
       where: { sofaId, status: "TERBUKA" },
       include: { billItems: true }
     })
 
     if (!bill) {
+      const orphanOpenBills = await tx.bill.count({
+        where: { sofaId, status: 'TERBUKA' }
+      })
+
+      if (orphanOpenBills > 0) {
+        throw new Error('Meja ini sudah memiliki tagihan aktif.')
+      }
+
       const session = await getSession()
       const kasirId = session ? session.user.id : undefined
       let shiftId = undefined
@@ -106,7 +185,6 @@ export async function createOrGetActiveBill(sofaId: string) {
       const pajakPct = parseInt(pajakSetting?.nilai || '10')
       const servicePct = parseInt(serviceSetting?.nilai || '5')
 
-      // Open new bill
       bill = await tx.bill.create({
         data: {
           sofaId,
@@ -120,11 +198,12 @@ export async function createOrGetActiveBill(sofaId: string) {
         },
         include: { billItems: true }
       })
-      
-      // Update sofa status
+    }
+
+    if (sofa.status !== 'TERISI' && sofa.status !== 'MENUNGGU_MAKANAN' && sofa.status !== 'SIAP_BAYAR') {
       await tx.sofa.update({
         where: { id: sofaId },
-        data: { status: "TERISI" }
+        data: { status: 'TERISI' }
       })
     }
 
@@ -162,6 +241,11 @@ export async function cleanupEmptyBills() {
 }
 
 export async function addMenuItemToBill(billId: string, menuItemId: string, qty: number, catatan?: string) {
+  const parsedQty = Number(qty)
+  if (!Number.isFinite(parsedQty) || parsedQty <= 0 || !Number.isInteger(parsedQty)) {
+    throw new Error("Jumlah item harus bilangan bulat dan lebih dari 0.")
+  }
+
   const menuItem = await prisma.menuItem.findUnique({ where: { id: menuItemId } })
   if (!menuItem) throw new Error("Menu item not found")
   if (!menuItem.tersedia) throw new Error("Menu item habis")
@@ -192,7 +276,7 @@ export async function addMenuItemToBill(billId: string, menuItemId: string, qty:
       menuItemId,
       namaItem: isHhApplied ? `${menuItem.nama} (HH -${hhDiskon}%)` : menuItem.nama,
       harga: hargaFinal,
-      qty,
+      qty: parsedQty,
       catatan,
       status: "DIKIRIM"
     }
@@ -222,50 +306,53 @@ export async function updateItemQty(itemId: string, delta: number) {
 
 export async function cancelLunasBill(billId: string, alasan: string, pin: string) {
   const session = await getSession()
-  await requireManager(pin) // Use the standard manager check
+  const cleanedAlasan = normalizeAuditReason(alasan, 'Alasan pembatalan')
+  await requireManager(pin)
 
   const bill = await prisma.bill.findUnique({ where: { id: billId } })
   if (!bill) throw new Error('Bill not found')
   if (bill.status !== "LUNAS") throw new Error('Bill ini tidak berstatus LUNAS')
 
-  // Cancel bill
   await prisma.bill.update({
     where: { id: billId },
-    data: { 
-      status: "BATAL",
-    }
+    data: { status: "BATAL" }
   })
 
-  // Log audit
   await prisma.auditLog.create({
     data: {
-      userId: session?.user?.id,
+      userId: session?.user?.id || null,
       aksi: 'KOREKSI_BATAL_BILL_LUNAS',
       entitas: 'Bill',
-      detail: `Batalkan Bill ${bill.nomorBill || bill.id} Lunas. Alasan: ${alasan}`
+      detail: JSON.stringify({
+        billId,
+        nomorBill: bill.nomorBill,
+        alasan: cleanedAlasan,
+        otorisasi: session?.user?.nama || 'SYSTEM',
+        total: bill.total
+      })
     }
   })
 
   revalidatePath('/riwayat')
+  revalidatePath('/summary')
 }
 
 export async function cancelBill(billId: string, alasan: string, pin: string) {
   const session = await getSession()
+  const cleanedAlasan = normalizeAuditReason(alasan, 'Alasan pembatalan')
   await requireManager(pin)
 
   const bill = await prisma.bill.findUnique({ where: { id: billId } })
   if (!bill) throw new Error('Bill not found')
 
-  // Cancel bill
   await prisma.bill.update({
     where: { id: billId },
-    data: { 
+    data: {
       status: "BATAL",
       waktuTutup: new Date()
     }
   })
 
-  // Reset Sofa jika ada
   if (bill.sofaId) {
     await prisma.sofa.update({
       where: { id: bill.sofaId },
@@ -274,24 +361,72 @@ export async function cancelBill(billId: string, alasan: string, pin: string) {
     revalidatePath(`/sofa/${bill.sofaId}`)
   }
 
-  // Audit log
   await prisma.auditLog.create({
     data: {
       userId: session?.user?.id || null,
       aksi: 'CANCEL_BILL',
       entitas: 'Bill',
-      detail: JSON.stringify({ billId, alasan, otorisasi: session?.user?.nama })
+      detail: JSON.stringify({
+        billId,
+        nomorBill: bill.nomorBill,
+        alasan: cleanedAlasan,
+        otorisasi: session?.user?.nama || 'SYSTEM',
+        total: bill.total,
+        sofaId: bill.sofaId
+      })
     }
   })
 
   revalidatePath(`/`)
   revalidatePath(`/open-order`)
+  revalidatePath(`/summary`)
   redirect("/")
 }
 
-export async function closeBill(billId: string, metodeBayar: string) {
+function normalizePaymentMethod(metodeBayar?: string) {
+  const raw = (metodeBayar ?? 'TUNAI').trim().toUpperCase()
+  if (!raw) return 'TUNAI'
+  if (raw.startsWith('SPLIT')) return 'SPLIT'
+  return raw
+}
+
+function normalizeAuditReason(alasan: string, label: string) {
+  const cleaned = alasan.trim()
+  if (!cleaned) throw new Error(`${label} wajib diisi.`)
+  if (cleaned.length < 3) throw new Error(`${label} minimal 3 karakter.`)
+  return cleaned
+}
+
+export async function closeBill(billId: string, metodeBayar: string, uangDiterima?: number) {
   const bill = await prisma.bill.findUnique({ where: { id: billId } })
-  if (!bill) return
+  if (!bill) throw new Error('Bill tidak ditemukan.')
+  if (bill.status !== 'TERBUKA') throw new Error('Bill ini sudah ditutup atau dibatalkan.')
+
+  const normalizedMethod = normalizePaymentMethod(metodeBayar)
+  const validMethods = ['TUNAI', 'KARTU', 'QRIS', 'SPLIT']
+  if (!validMethods.includes(normalizedMethod)) {
+    throw new Error('Metode pembayaran tidak valid.')
+  }
+
+  const totalBill = Number(bill.total ?? 0)
+  if (!Number.isFinite(totalBill) || totalBill < 0) {
+    throw new Error('Total bill tidak valid untuk proses pembayaran.')
+  }
+
+  const nominalDiterima = Number(uangDiterima ?? totalBill)
+  if (!Number.isFinite(nominalDiterima) || nominalDiterima < 0) {
+    throw new Error('Nominal uang yang diterima tidak valid.')
+  }
+
+  if (normalizedMethod === 'TUNAI' && totalBill > 0 && nominalDiterima < totalBill) {
+    throw new Error('Uang yang diterima kurang dari total tagihan.')
+  }
+
+  if (normalizedMethod !== 'TUNAI' && totalBill > 0 && nominalDiterima < totalBill) {
+    throw new Error('Nominal pembayaran tidak boleh kurang dari total tagihan untuk metode non-tunai.')
+  }
+
+  const kembalian = Math.max(0, nominalDiterima - totalBill)
 
   // Simpan snapshot tarif saat bill ditutup
   const { getSettings } = await import('@/lib/bill')
@@ -300,14 +435,13 @@ export async function closeBill(billId: string, metodeBayar: string) {
   // Mark bill as LUNAS
   await prisma.bill.update({
     where: { id: billId },
-    data: { 
+    data: {
       status: "LUNAS",
       waktuTutup: new Date(),
-      metodeBayar 
+      metodeBayar: normalizedMethod
     }
   })
 
-  // Reset Sofa jika ada
   if (bill.sofaId) {
     await prisma.sofa.update({
       where: { id: bill.sofaId },
@@ -316,53 +450,77 @@ export async function closeBill(billId: string, metodeBayar: string) {
     revalidatePath(`/sofa/${bill.sofaId}`)
   }
 
-  // Audit log
   await prisma.auditLog.create({
     data: {
       userId: bill.kasirId || null,
       aksi: 'CLOSE_BILL',
       entitas: 'Bill',
-      detail: JSON.stringify({ billId, metodeBayar, total: bill.total, pajak: settings.pajak, serviceCharge: settings.serviceCharge })
+      detail: JSON.stringify({
+        billId,
+        metodeBayar: normalizedMethod,
+        total: totalBill,
+        uangDiterima: nominalDiterima,
+        kembalian,
+        pajak: settings.pajak,
+        serviceCharge: settings.serviceCharge
+      })
     }
   })
 
   revalidatePath(`/`)
   revalidatePath(`/open-order`)
+  revalidatePath(`/summary`)
 }
 
-export async function returnItem(itemId: string, alasan: string) {
+export async function returnItem(itemId: string, alasan: string, pin?: string) {
+  const session = await requireManager(pin)
+  const cleanedAlasan = normalizeAuditReason(alasan, 'Alasan retur')
+
   const item = await prisma.billItem.findUnique({ where: { id: itemId } })
   if (!item) throw new Error('Item not found')
-  if (item.diretur) throw new Error('Item sudah diretur')
+  if (item.isVoid) throw new Error('Item ini sudah di-void, tidak dapat diretur.')
+  if (item.isComp) throw new Error('Item ini sudah di-comp, tidak dapat diretur.')
+  if (item.diretur) throw new Error('Item sudah diretur sebelumnya.')
+
+  const bill = await prisma.bill.findUnique({ where: { id: item.billId } })
+  if (!bill) throw new Error('Bill tidak ditemukan.')
+  if (bill.status !== 'TERBUKA') throw new Error('Retur hanya dapat dilakukan pada bill yang masih terbuka.')
 
   await prisma.billItem.update({
     where: { id: itemId },
-    data: { diretur: true }
+    data: {
+      diretur: true,
+      alasanVoidComp: cleanedAlasan,
+      otorisasiOleh: session?.user?.nama || 'MANAJER'
+    }
   })
   await calculateBillTotal(item.billId)
 
-  const session = await getSession()
   await prisma.auditLog.create({
     data: {
       userId: session?.user?.id || null,
       aksi: 'RETURN_ITEM',
       entitas: 'BillItem',
-      detail: JSON.stringify({ itemId, billId: item.billId, namaItem: item.namaItem, alasan })
+      detail: JSON.stringify({ itemId, billId: item.billId, namaItem: item.namaItem, alasan: cleanedAlasan, otorisasi: session?.user?.nama })
     }
   })
   revalidatePath(`/`)
+  revalidatePath(`/summary`)
 }
 
 export async function voidItem(itemId: string, alasan: string, pin: string) {
-  await requireManager()
-  const session = await getSession()
+  const session = await requireManager(pin)
+  const cleanedAlasan = normalizeAuditReason(alasan, 'Alasan void')
 
   const item = await prisma.billItem.findUnique({ where: { id: itemId } })
   if (!item) throw new Error('Item not found')
+  if (item.isVoid) throw new Error('Item ini sudah di-void sebelumnya.')
+  if (item.isComp) throw new Error('Item ini sudah di-comp, tidak dapat di-void.')
+  if (item.diretur) throw new Error('Item yang sudah diretur tidak dapat diubah.')
 
   await prisma.billItem.update({
     where: { id: itemId },
-    data: { isVoid: true, alasanVoidComp: alasan, otorisasiOleh: session?.user?.nama || 'MANAJER' }
+    data: { isVoid: true, alasanVoidComp: cleanedAlasan, otorisasiOleh: session?.user?.nama || 'MANAJER' }
   })
   await calculateBillTotal(item.billId)
 
@@ -371,22 +529,26 @@ export async function voidItem(itemId: string, alasan: string, pin: string) {
       userId: session?.user?.id || null,
       aksi: 'VOID_ITEM',
       entitas: 'BillItem',
-      detail: JSON.stringify({ itemId, billId: item.billId, namaItem: item.namaItem, alasan, otorisasi: session?.user?.nama })
+      detail: JSON.stringify({ itemId, billId: item.billId, namaItem: item.namaItem, alasan: cleanedAlasan, otorisasi: session?.user?.nama })
     }
   })
   revalidatePath(`/`)
+  revalidatePath(`/summary`)
 }
 
 export async function compItem(itemId: string, alasan: string, pin: string) {
-  await requireManager()
-  const session = await getSession()
+  const session = await requireManager(pin)
+  const cleanedAlasan = normalizeAuditReason(alasan, 'Alasan comp')
 
   const item = await prisma.billItem.findUnique({ where: { id: itemId } })
   if (!item) throw new Error('Item not found')
+  if (item.isVoid) throw new Error('Item ini sudah di-void, tidak dapat di-comp.')
+  if (item.isComp) throw new Error('Item ini sudah di-comp sebelumnya.')
+  if (item.diretur) throw new Error('Item yang sudah diretur tidak dapat diubah.')
 
   await prisma.billItem.update({
     where: { id: itemId },
-    data: { isComp: true, alasanVoidComp: alasan, otorisasiOleh: session?.user?.nama || 'MANAJER' }
+    data: { isComp: true, alasanVoidComp: cleanedAlasan, otorisasiOleh: session?.user?.nama || 'MANAJER' }
   })
   await calculateBillTotal(item.billId)
 
@@ -395,19 +557,39 @@ export async function compItem(itemId: string, alasan: string, pin: string) {
       userId: session?.user?.id || null,
       aksi: 'COMP_ITEM',
       entitas: 'BillItem',
-      detail: JSON.stringify({ itemId, billId: item.billId, namaItem: item.namaItem, alasan, otorisasi: session?.user?.nama })
+      detail: JSON.stringify({ itemId, billId: item.billId, namaItem: item.namaItem, alasan: cleanedAlasan, otorisasi: session?.user?.nama })
     }
   })
   revalidatePath(`/`)
+  revalidatePath(`/summary`)
 }
 
 export async function toggleMenuAvailability(menuItemId: string) {
-  const item = await prisma.menuItem.findUnique({ where: { id: menuItemId } })
+  const session = await requireMenuManager()
+
+  const item = await prisma.menuItem.findFirst({ where: { id: menuItemId, isDeleted: false } })
   if (!item) throw new Error('Menu not found')
+
+  const nextAvailability = !item.tersedia
 
   await prisma.menuItem.update({
     where: { id: menuItemId },
-    data: { tersedia: !item.tersedia }
+    data: { tersedia: nextAvailability }
+  })
+
+  await prisma.auditLog.create({
+    data: {
+      userId: session.user.id,
+      aksi: nextAvailability ? 'MENU_RESTOCK' : 'MENU_MARKED_HABIS',
+      entitas: 'MenuItem',
+      detail: JSON.stringify({
+        menuItemId,
+        nama: item.nama,
+        kategori: item.kategori,
+        tersedia: nextAvailability,
+        otorisasi: session.user.nama
+      })
+    }
   })
 
   revalidatePath(`/menu`)
@@ -415,31 +597,129 @@ export async function toggleMenuAvailability(menuItemId: string) {
 }
 
 export async function addMenuItem(nama: string, harga: number, kategori: "MAKANAN" | "MINUMAN") {
-  await prisma.menuItem.create({ data: { nama, harga, kategori } })
+  const session = await requireMenuManager()
+
+  const { cleanedNama, parsedHarga } = normalizeMenuPayload(nama, harga, kategori)
+  const existing = await prisma.menuItem.findFirst({
+    where: {
+      nama: { equals: cleanedNama, mode: 'insensitive' },
+      isDeleted: false,
+    }
+  })
+
+  if (existing) {
+    throw new Error(`Menu "${cleanedNama}" sudah ada.`)
+  }
+
+  const created = await prisma.menuItem.create({ data: { nama: cleanedNama, harga: parsedHarga, kategori } })
+
+  await prisma.auditLog.create({
+    data: {
+      userId: session.user.id,
+      aksi: 'MENU_CREATED',
+      entitas: 'MenuItem',
+      detail: JSON.stringify({ menuItemId: created.id, nama: cleanedNama, harga: parsedHarga, kategori, otorisasi: session.user.nama })
+    }
+  })
+
   revalidatePath('/menu')
   revalidatePath('/')
 }
 
 export async function editMenuItem(id: string, nama: string, harga: number, kategori: "MAKANAN" | "MINUMAN") {
-  await prisma.menuItem.update({ where: { id }, data: { nama, harga, kategori } })
+  const session = await requireMenuManager()
+
+  const { cleanedNama, parsedHarga } = normalizeMenuPayload(nama, harga, kategori)
+  const existing = await prisma.menuItem.findFirst({
+    where: {
+      nama: { equals: cleanedNama, mode: 'insensitive' },
+      id: { not: id },
+      isDeleted: false,
+    }
+  })
+
+  if (existing) {
+    throw new Error(`Menu "${cleanedNama}" sudah ada.`)
+  }
+
+  const current = await prisma.menuItem.findUnique({ where: { id } })
+  if (!current) throw new Error('Menu tidak ditemukan.')
+
+  await prisma.menuItem.update({ where: { id }, data: { nama: cleanedNama, harga: parsedHarga, kategori } })
+
+  await prisma.auditLog.create({
+    data: {
+      userId: session.user.id,
+      aksi: 'MENU_UPDATED',
+      entitas: 'MenuItem',
+      detail: JSON.stringify({
+        menuItemId: id,
+        sebelumnya: { nama: current.nama, harga: current.harga, kategori: current.kategori },
+        terbaru: { nama: cleanedNama, harga: parsedHarga, kategori },
+        otorisasi: session.user.nama
+      })
+    }
+  })
+
   revalidatePath('/menu')
   revalidatePath('/')
 }
 
 export async function deleteMenuItem(id: string) {
-  await prisma.menuItem.update({ where: { id }, data: { isDeleted: true, tersedia: false } })
+  const session = await requireMenuManager()
+
+  const item = await prisma.menuItem.findFirst({ where: { id, isDeleted: false } })
+  if (!item) throw new Error('Menu tidak ditemukan.')
+
+  await prisma.menuItem.update({ where: { id, isDeleted: false }, data: { isDeleted: true, tersedia: false } })
+
+  await prisma.auditLog.create({
+    data: {
+      userId: session.user.id,
+      aksi: 'MENU_DELETED',
+      entitas: 'MenuItem',
+      detail: JSON.stringify({ menuItemId: id, nama: item.nama, kategori: item.kategori, otorisasi: session.user.nama })
+    }
+  })
+
   revalidatePath('/menu')
   revalidatePath('/')
 }
 
+function normalizeSofaData(nama: string, kapasitas: number) {
+  const cleanedNama = nama.trim()
+  if (!cleanedNama) throw new Error('Nama meja / area wajib diisi.')
+
+  const parsedKapasitas = Number(kapasitas)
+  if (!Number.isFinite(parsedKapasitas) || parsedKapasitas <= 0 || !Number.isInteger(parsedKapasitas)) {
+    throw new Error('Kapasitas meja harus bilangan bulat dan lebih dari 0.')
+  }
+
+  return { cleanedNama, parsedKapasitas }
+}
+
 export async function addSofa(nama: string, kapasitas: number) {
-  await prisma.sofa.create({ data: { nama, kapasitas } })
+  const { cleanedNama, parsedKapasitas } = normalizeSofaData(nama, kapasitas)
+  const existing = await prisma.sofa.findFirst({
+    where: { nama: { equals: cleanedNama, mode: 'insensitive' }, isDeleted: false }
+  })
+
+  if (existing) throw new Error(`Meja "${cleanedNama}" sudah ada.`)
+
+  await prisma.sofa.create({ data: { nama: cleanedNama, kapasitas: parsedKapasitas } })
   revalidatePath('/sofas')
   revalidatePath('/')
 }
 
 export async function editSofa(id: string, nama: string, kapasitas: number) {
-  await prisma.sofa.update({ where: { id }, data: { nama, kapasitas } })
+  const { cleanedNama, parsedKapasitas } = normalizeSofaData(nama, kapasitas)
+  const existing = await prisma.sofa.findFirst({
+    where: { nama: { equals: cleanedNama, mode: 'insensitive' }, id: { not: id }, isDeleted: false }
+  })
+
+  if (existing) throw new Error(`Meja "${cleanedNama}" sudah ada.`)
+
+  await prisma.sofa.update({ where: { id }, data: { nama: cleanedNama, kapasitas: parsedKapasitas } })
   revalidatePath('/sofas')
   revalidatePath('/')
 }
@@ -539,7 +819,10 @@ export async function openShift(kasirId: string, kasAwal: number) {
   return shift
 }
 
-export async function closeShift(shiftId: string) {
+export async function closeShift(shiftId: string, pin?: string) {
+  const session = await requireSession()
+  await requireManager(pin)
+
   const shift = await prisma.shift.findUnique({ where: { id: shiftId } })
   if (!shift) throw new Error('Shift not found')
 
@@ -551,16 +834,14 @@ export async function closeShift(shiftId: string) {
     throw new Error(`Tidak bisa tutup shift. Masih ada ${openBills} tagihan yang belum lunas/ditutup.`)
   }
 
-  // Hitung total penjualan selama shift
   const bills = await prisma.bill.findMany({
     where: {
       status: 'LUNAS',
+      shiftId,
       waktuTutup: { gte: shift.waktuBuka }
     }
   })
   const totalPenjualan = bills.reduce((acc, b) => acc + b.total, 0)
-  
-  // Hitung kas akhir riil
   const kasAkhir = shift.kasAwal + totalPenjualan - shift.pengeluaran
 
   await prisma.shift.update({
@@ -572,12 +853,33 @@ export async function closeShift(shiftId: string) {
     }
   })
 
+  await prisma.auditLog.create({
+    data: {
+      userId: session.user.id,
+      aksi: 'CLOSE_SHIFT',
+      entitas: 'Shift',
+      detail: JSON.stringify({ shiftId, kasAkhir, totalPenjualan, otorisasi: session.user.nama })
+    }
+  })
+
   revalidatePath(`/shift`)
 }
 
-export async function catatPengeluaran(shiftId: string, jumlah: number, catatan: string) {
+export async function catatPengeluaran(shiftId: string, jumlah: number, catatan: string, pin?: string) {
+  const session = await requireSession()
   const shift = await prisma.shift.findUnique({ where: { id: shiftId } })
   if (!shift) throw new Error('Shift not found')
+
+  const isOwner = session.user.id === shift.kasirId
+  const isManager = session.user.peran === 'MANAJER'
+
+  if (!isOwner && !isManager) {
+    throw new Error('Hanya kasir pemilik shift atau manager yang dapat mencatat pengeluaran.')
+  }
+
+  if (pin) {
+    await verifyManagerPin(pin)
+  }
 
   await prisma.shift.update({
     where: { id: shiftId },
@@ -586,38 +888,117 @@ export async function catatPengeluaran(shiftId: string, jumlah: number, catatan:
       catatanPengeluaran: shift.catatanPengeluaran ? `${shift.catatanPengeluaran} | ${catatan}` : catatan 
     }
   })
+
+  await prisma.auditLog.create({
+    data: {
+      userId: session.user.id,
+      aksi: 'EXPENSE_SHIFT',
+      entitas: 'Shift',
+      detail: JSON.stringify({ shiftId, jumlah, catatan, otorisasi: session.user.nama })
+    }
+  })
+
   revalidatePath(`/shift`)
 }
 
 export async function createReservasi(sofaId: string, nama: string, jam: string, jumlahOrang: number, deposit?: number) {
+  const cleanedNama = nama.trim()
+  if (!sofaId) throw new Error('Pilih sofa terlebih dahulu.')
+  if (!cleanedNama) throw new Error('Nama tamu harus diisi.')
+  if (!Number.isFinite(jumlahOrang) || jumlahOrang <= 0) throw new Error('Jumlah orang harus lebih dari 0.')
+
+  const sofa = await prisma.sofa.findUnique({ where: { id: sofaId } })
+  if (!sofa || sofa.isDeleted) throw new Error('Sofa tidak ditemukan atau tidak aktif.')
+  if (sofa.kapasitas < jumlahOrang) throw new Error(`Kapasitas sofa ${sofa.nama} hanya ${sofa.kapasitas} orang.`)
+
+  const targetJam = new Date(jam)
+  if (Number.isNaN(targetJam.getTime())) throw new Error('Waktu reservasi tidak valid.')
+
+  const windowStart = new Date(targetJam.getTime() - 30 * 60 * 1000)
+  const windowEnd = new Date(targetJam.getTime() + 2 * 60 * 60 * 1000)
+
+  const conflict = await prisma.reservasi.count({
+    where: {
+      sofaId,
+      status: { not: 'CANCELLED' },
+      jam: {
+        gte: windowStart,
+        lte: windowEnd,
+      },
+    }
+  })
+
+  if (conflict > 0) {
+    throw new Error('Sofa sudah memiliki reservasi pada rentang waktu yang berdekatan.')
+  }
+
   await prisma.reservasi.create({
     data: {
       sofaId,
-      nama,
-      jam: new Date(jam),
+      nama: cleanedNama,
+      jam: targetJam,
       jumlahOrang,
-      deposit: deposit || null,
+      deposit: deposit && deposit > 0 ? deposit : null,
       status: 'PENDING'
     }
   })
+
+  await prisma.auditLog.create({
+    data: {
+      userId: null,
+      aksi: 'CREATE_RESERVASI',
+      entitas: 'Reservasi',
+      detail: JSON.stringify({ sofaId, nama: cleanedNama, jam: targetJam.toISOString(), jumlahOrang, deposit: deposit || 0 })
+    }
+  })
+
   revalidatePath(`/reservasi`)
 }
 
 export async function updateReservasiStatus(id: string, status: 'CONFIRMED' | 'CANCELLED' | 'COMPLETED') {
+  const reservation = await prisma.reservasi.findUnique({ where: { id } })
+  if (!reservation) throw new Error('Reservasi tidak ditemukan.')
+
+  if (status === 'COMPLETED' && reservation.status !== 'CONFIRMED') {
+    throw new Error('Reservasi harus dikonfirmasi terlebih dahulu sebelum selesai.')
+  }
+
   await prisma.reservasi.update({
     where: { id },
     data: { status }
   })
+
+  await prisma.auditLog.create({
+    data: {
+      userId: null,
+      aksi: 'UPDATE_RESERVASI_STATUS',
+      entitas: 'Reservasi',
+      detail: JSON.stringify({ reservasiId: id, previousStatus: reservation.status, nextStatus: status })
+    }
+  })
+
   revalidatePath(`/reservasi`)
 }
 
 export async function updateSetting(kunci: string, nilai: string) {
   await requireManager()
-  // If updating PIN_MANAJER, hash it first
   let finalNilai = nilai
+
   if (kunci === 'PIN_MANAJER') {
     finalNilai = await bcrypt.hash(nilai, 10)
+
+    const managerUser = await prisma.user.findFirst({
+      where: { peran: 'MANAJER', isDeleted: false }
+    })
+
+    if (managerUser) {
+      await prisma.user.update({
+        where: { id: managerUser.id },
+        data: { pin: finalNilai }
+      })
+    }
   }
+
   await prisma.setting.upsert({
     where: { kunci },
     update: { nilai: finalNilai },
@@ -723,29 +1104,28 @@ export async function logoutUser() {
 }
 
 export async function verifyAndUpdatePin(pinLama: string, pinBaru: string) {
-  const pinManajer = await prisma.setting.findUnique({ where: { kunci: 'PIN_MANAJER' } })
-  
-  let pinLamaValid = false
-  if (pinManajer) {
-    try {
-      pinLamaValid = await bcrypt.compare(pinLama, pinManajer.nilai)
-    } catch {
-      // fallback for legacy plain text
-      pinLamaValid = pinLama === pinManajer.nilai
-    }
-  } else {
-    pinLamaValid = pinLama === '123456'
-  }
+  const [pinManajer, managerUser] = await Promise.all([
+    prisma.setting.findUnique({ where: { kunci: 'PIN_MANAJER' } }),
+    prisma.user.findFirst({ where: { peran: 'MANAJER', isDeleted: false } })
+  ])
+
+  const candidates = [pinManajer?.nilai, managerUser?.pin]
+  const pinLamaValid = await comparePinWithCandidates(pinLama, candidates)
 
   if (!pinLamaValid) return { error: 'PIN lama salah' }
   if (pinBaru.length < 4) return { error: 'PIN baru minimal 4 digit' }
 
   const hashedNew = await bcrypt.hash(pinBaru, 10)
-  await prisma.setting.upsert({
-    where: { kunci: 'PIN_MANAJER' },
-    update: { nilai: hashedNew },
-    create: { kunci: 'PIN_MANAJER', nilai: hashedNew }
-  })
+  await Promise.all([
+    prisma.setting.upsert({
+      where: { kunci: 'PIN_MANAJER' },
+      update: { nilai: hashedNew },
+      create: { kunci: 'PIN_MANAJER', nilai: hashedNew }
+    }),
+    managerUser
+      ? prisma.user.update({ where: { id: managerUser.id }, data: { pin: hashedNew } })
+      : Promise.resolve()
+  ])
   revalidatePath('/settings')
   return { success: true }
 }
@@ -786,6 +1166,32 @@ export async function getEndOfDayReport(tanggal: string) {
   const totalDiskon = bills.reduce((s, b) => s + b.diskon, 0)
   const totalVoidNominal = voidItems.reduce((s, i) => s + i.harga * i.qty, 0)
   const totalCompNominal = compItems.reduce((s, i) => s + i.harga * i.qty, 0)
+  const openingCash = shifts.reduce((s, shift) => s + (shift.kasAwal || 0), 0)
+  const expenseCash = shifts.reduce((s, shift) => s + (shift.pengeluaran || 0), 0)
+
+  const normalizeMethodKey = (method?: string | null) => {
+    const raw = (method ?? 'TUNAI').trim().toUpperCase()
+    if (!raw) return 'TUNAI'
+    if (raw.startsWith('SPLIT')) return 'SPLIT'
+    return raw
+  }
+
+  const cashSales = bills
+    .filter((bill) => ['TUNAI', 'CASH'].includes(normalizeMethodKey(bill.metodeBayar)))
+    .reduce((s, bill) => s + bill.total, 0)
+  const nonCashSales = bills
+    .filter((bill) => !['TUNAI', 'CASH'].includes(normalizeMethodKey(bill.metodeBayar)))
+    .reduce((s, bill) => s + bill.total, 0)
+  const expectedCash = openingCash + cashSales - expenseCash
+  const actualClosingCash = shifts.reduce((s, shift) => s + (shift.kasAkhir ?? (shift.kasAwal + (shift.totalPenjualan || 0) - (shift.pengeluaran || 0))), 0)
+  const cashDifference = actualClosingCash - expectedCash
+  const cashTolerance = 50000
+  const cashStatus = Math.abs(cashDifference) <= cashTolerance ? 'SESUAI' : Math.abs(cashDifference) <= cashTolerance * 2 ? 'WASPADA' : 'KRITIS'
+  const cashStatusMessage = Math.abs(cashDifference) <= cashTolerance
+    ? 'Rekonsiliasi kas sesuai toleransi yang diizinkan.'
+    : Math.abs(cashDifference) <= cashTolerance * 2
+      ? 'Ada selisih kas yang perlu diperiksa lebih lanjut.'
+      : 'Selisih kas melebihi toleransi dan memerlukan review manajer.'
 
   const byMetode: Record<string, { count: number; total: number }> = {}
   for (const bill of bills) {
@@ -819,6 +1225,16 @@ export async function getEndOfDayReport(tanggal: string) {
     totalDiskon,
     totalVoidNominal,
     totalCompNominal,
+    openingCash,
+    expenseCash,
+    cashSales,
+    nonCashSales,
+    expectedCash,
+    actualClosingCash,
+    cashDifference,
+    cashTolerance,
+    cashStatus,
+    cashStatusMessage,
     voidItems,
     compItems,
     byMetode,

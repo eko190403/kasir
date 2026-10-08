@@ -79,6 +79,35 @@ export default function EODReportClient() {
             </div>
           </div>
 
+          <div className={`rounded-2xl border p-6 ${report.cashStatus === 'SESUAI' ? 'border-emerald-800/60 bg-emerald-950/20' : report.cashStatus === 'WASPADA' ? 'border-amber-800/60 bg-amber-950/20' : 'border-red-800/60 bg-red-950/20'}`}>
+            <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+              <div>
+                <p className="text-xs uppercase tracking-[0.18em] text-zinc-300">Status Rekonsiliasi Kas</p>
+                <h3 className="mt-2 text-2xl font-black text-white">{report.cashStatus}</h3>
+              </div>
+              <div className="rounded-full border border-white/10 bg-black/20 px-3 py-1 text-sm text-zinc-100">
+                Toleransi ± {fmt(report.cashTolerance)}
+              </div>
+            </div>
+            <p className="mt-3 text-sm text-zinc-200">{report.cashStatusMessage}</p>
+            <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-3">
+              <div className="rounded-xl border border-zinc-800 bg-zinc-950/40 p-3">
+                <div className="text-[10px] uppercase tracking-[0.14em] text-zinc-400">Kas Akhir Aktual</div>
+                <div className="mt-2 text-xl font-black text-white">{fmt(report.actualClosingCash)}</div>
+              </div>
+              <div className="rounded-xl border border-zinc-800 bg-zinc-950/40 p-3">
+                <div className="text-[10px] uppercase tracking-[0.14em] text-zinc-400">Kas Diharapkan</div>
+                <div className="mt-2 text-xl font-black text-white">{fmt(report.expectedCash)}</div>
+              </div>
+              <div className={`rounded-xl border p-3 ${report.cashDifference >= 0 ? 'border-emerald-700/50 bg-emerald-950/20' : 'border-red-700/50 bg-red-950/20'}`}>
+                <div className="text-[10px] uppercase tracking-[0.14em] text-zinc-300">Selisih</div>
+                <div className={`mt-2 text-xl font-black ${report.cashDifference >= 0 ? 'text-emerald-300' : 'text-red-300'}`}>
+                  {report.cashDifference >= 0 ? `+ ${fmt(report.cashDifference)}` : `- ${fmt(Math.abs(report.cashDifference))}`}
+                </div>
+              </div>
+            </div>
+          </div>
+
           {/* Rincian Keuangan */}
           <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6">
             <h3 className="font-bold mb-4 flex items-center gap-2"><TrendingUp className="w-4 h-4 text-emerald-400" /> Rincian Keuangan</h3>
@@ -97,6 +126,41 @@ export default function EODReportClient() {
               <div className="flex justify-between font-bold text-base border-t border-zinc-700 pt-2 mt-2 text-emerald-400">
                 <span>TOTAL PENDAPATAN</span>
                 <span>{fmt(report.totalPendapatan)}</span>
+              </div>
+            </div>
+
+            <div className="mt-6 grid grid-cols-2 md:grid-cols-4 gap-3">
+              {[
+                { label: 'Kas Awal', value: report.openingCash },
+                { label: 'Penjualan Tunai', value: report.cashSales },
+                { label: 'Penjualan Non Tunai', value: report.nonCashSales },
+                { label: 'Kas Keluar', value: -report.expenseCash },
+                { label: 'Kas Diharapkan', value: report.expectedCash },
+              ].map(({ label, value }) => (
+                <div key={label} className="bg-zinc-800 rounded-xl p-3 border border-zinc-700">
+                  <div className="text-[10px] uppercase tracking-wide text-zinc-400 mb-2">{label}</div>
+                  <div className="text-base font-black text-white">{fmt(value)}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6">
+            <h3 className="font-bold mb-4">Rekonsiliasi Kas</h3>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
+              <div className="bg-zinc-800 rounded-xl p-4">
+                <div className="text-zinc-400 text-xs uppercase">Kas Akhir Aktual</div>
+                <div className="mt-2 text-xl font-black text-emerald-400">{fmt(report.actualClosingCash)}</div>
+              </div>
+              <div className="bg-zinc-800 rounded-xl p-4">
+                <div className="text-zinc-400 text-xs uppercase">Kas Diharapkan</div>
+                <div className="mt-2 text-xl font-black text-blue-400">{fmt(report.expectedCash)}</div>
+              </div>
+              <div className={`rounded-xl p-4 ${report.cashDifference >= 0 ? 'bg-emerald-950/40 border border-emerald-500/30' : 'bg-red-950/40 border border-red-500/30'}`}>
+                <div className="text-zinc-300 text-xs uppercase">Selisih</div>
+                <div className={`mt-2 text-xl font-black ${report.cashDifference >= 0 ? 'text-emerald-300' : 'text-red-300'}`}>
+                  {report.cashDifference >= 0 ? `+ ${fmt(report.cashDifference)}` : `- ${fmt(Math.abs(report.cashDifference))}`}
+                </div>
               </div>
             </div>
           </div>

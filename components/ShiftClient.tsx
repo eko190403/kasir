@@ -1,7 +1,7 @@
 "use client"
 
 import { useState } from "react"
-import { openShift, closeShift } from "@/app/actions"
+import { openShift, closeShift, catatPengeluaran } from "@/app/actions"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
 
@@ -11,6 +11,8 @@ export default function ShiftClient({ shifts, users }: { shifts: any[], users: a
   const [loading, setLoading] = useState(false)
   const [kasirId, setKasirId] = useState('')
   const [kasAwal, setKasAwal] = useState(0)
+  const [shiftPin, setShiftPin] = useState('')
+  const [pendingCloseId, setPendingCloseId] = useState<string | null>(null)
 
   const handleOpen = async () => {
     if (!kasirId) { toast.warning("Pilih kasir dulu"); return }
@@ -30,11 +32,18 @@ export default function ShiftClient({ shifts, users }: { shifts: any[], users: a
   }
 
   const handleClose = async (shiftId: string) => {
-    if (!confirm("Yakin tutup shift ini?")) return
+    setPendingCloseId(shiftId)
+    setShiftPin('')
+  }
+
+  const confirmCloseShift = async () => {
+    if (!pendingCloseId) return
     setLoading(true)
     try {
-      await closeShift(shiftId)
+      await closeShift(pendingCloseId, shiftPin)
       toast.success('Shift berhasil ditutup!')
+      setPendingCloseId(null)
+      setShiftPin('')
       router.refresh()
     } catch (err: any) {
       toast.error(err.message)
@@ -50,17 +59,21 @@ export default function ShiftClient({ shifts, users }: { shifts: any[], users: a
   const [pettyCashId, setPettyCashId] = useState<string | null>(null)
   const [pettyJumlah, setPettyJumlah] = useState(0)
   const [pettyCatatan, setPettyCatatan] = useState("")
-  const { catatPengeluaran } = require("@/app/actions")
 
   const handlePettyCash = async () => {
-    if (!pettyCashId || pettyJumlah <= 0 || !pettyCatatan) { toast.warning("Isi jumlah dan catatan"); return }
+    if (!pettyCashId || pettyJumlah <= 0 || !pettyCatatan.trim()) {
+      toast.warning("Isi jumlah dan catatan pengeluaran terlebih dahulu")
+      return
+    }
+
     setLoading(true)
     try {
-      await catatPengeluaran(pettyCashId, pettyJumlah, pettyCatatan)
+      await catatPengeluaran(pettyCashId, pettyJumlah, pettyCatatan.trim(), shiftPin)
       toast.success('Pengeluaran berhasil dicatat.')
       setPettyCashId(null)
       setPettyJumlah(0)
       setPettyCatatan("")
+      setShiftPin("")
       router.refresh()
     } catch (err: any) {
       toast.error(err.message)
@@ -73,7 +86,7 @@ export default function ShiftClient({ shifts, users }: { shifts: any[], users: a
     <div className="space-y-6">
       {/* Open Shift Form */}
       {!showForm ? (
-        <button onClick={() => setShowForm(true)} className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 rounded-lg text-sm font-medium transition">
+        <button onClick={() => setShowForm(true)} className="px-4 py-2 bg-amber-600 hover:bg-amber-500 rounded-lg text-sm font-medium transition">
           + Buka Shift Baru
         </button>
       ) : (
@@ -94,7 +107,7 @@ export default function ShiftClient({ shifts, users }: { shifts: any[], users: a
           </div>
           <div className="flex gap-2 pt-2">
             <button onClick={() => setShowForm(false)} className="px-4 py-2 bg-zinc-700 rounded-lg text-sm">Batal</button>
-            <button onClick={handleOpen} disabled={loading} className="flex-1 bg-emerald-600 hover:bg-emerald-500 py-2 rounded-lg text-sm font-bold">Buka Shift</button>
+            <button onClick={handleOpen} disabled={loading} className="flex-1 bg-amber-600 hover:bg-amber-500 py-2 rounded-lg text-sm font-bold">Buka Shift</button>
           </div>
         </div>
       )}
@@ -118,7 +131,7 @@ export default function ShiftClient({ shifts, users }: { shifts: any[], users: a
                   <div className="text-red-400">Kas Keluar: <span>Rp {s.pengeluaran.toLocaleString('id-ID')}</span></div>
                 </div>
                 <div className="flex gap-2">
-                  <button onClick={() => setPettyCashId(s.id)} disabled={loading}
+                  <button onClick={() => { setPettyCashId(s.id); setShiftPin('') }} disabled={loading}
                     className="flex-1 bg-amber-600 hover:bg-amber-500 py-2 rounded-lg text-xs font-bold transition">
                     + Kas Keluar
                   </button>
@@ -145,13 +158,36 @@ export default function ShiftClient({ shifts, users }: { shifts: any[], users: a
                   <input type="text" value={pettyCatatan} onChange={e => setPettyCatatan(e.target.value)}
                     className="w-full bg-zinc-800 border border-zinc-700 rounded-lg p-2 text-sm mt-1 focus:outline-none focus:border-emerald-500" />
                 </div>
+                <div>
+                  <label className="text-xs text-zinc-400">PIN Manager (opsional untuk kasir)</label>
+                  <input type="password" inputMode="numeric" value={shiftPin} onChange={e => setShiftPin(e.target.value)}
+                    className="w-full bg-zinc-800 border border-zinc-700 rounded-lg p-2 text-sm mt-1 focus:outline-none focus:border-emerald-500" />
+                </div>
                 <div className="flex gap-2 pt-2">
-                  <button onClick={() => setPettyCashId(null)} className="px-4 py-2 bg-zinc-700 rounded-lg text-sm">Batal</button>
+                  <button onClick={() => { setPettyCashId(null); setShiftPin('') }} className="px-4 py-2 bg-zinc-700 rounded-lg text-sm">Batal</button>
                   <button onClick={handlePettyCash} disabled={loading} className="flex-1 bg-amber-600 hover:bg-amber-500 py-2 rounded-lg text-sm font-bold">Simpan</button>
                 </div>
               </div>
             </div>
           )}
+        </div>
+      )}
+
+      {pendingCloseId && (
+        <div className="fixed inset-0 bg-black/80 flex items-center justify-center p-4 z-50">
+          <div className="bg-zinc-900 border border-zinc-700 p-5 rounded-xl space-y-4 w-full max-w-sm">
+            <h3 className="font-bold text-lg">Konfirmasi Tutup Shift</h3>
+            <p className="text-sm text-zinc-300">Tutup shift memerlukan otorisasi manager. Masukkan PIN manager untuk melanjutkan.</p>
+            <div>
+              <label className="text-xs text-zinc-400">PIN Manager</label>
+              <input type="password" inputMode="numeric" value={shiftPin} onChange={e => setShiftPin(e.target.value)}
+                className="w-full bg-zinc-800 border border-zinc-700 rounded-lg p-2 text-sm mt-1 focus:outline-none focus:border-emerald-500" />
+            </div>
+            <div className="flex gap-2 pt-2">
+              <button onClick={() => { setPendingCloseId(null); setShiftPin('') }} className="px-4 py-2 bg-zinc-700 rounded-lg text-sm">Batal</button>
+              <button onClick={confirmCloseShift} disabled={loading} className="flex-1 bg-red-600 hover:bg-red-500 py-2 rounded-lg text-sm font-bold">Konfirmasi</button>
+            </div>
+          </div>
         </div>
       )}
 

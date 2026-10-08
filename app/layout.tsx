@@ -38,18 +38,18 @@ export default async function RootLayout({ children }: { children: React.ReactNo
           <nav className="border-b border-zinc-800 bg-zinc-900/80 backdrop-blur-md sticky top-0 z-50">
             <div className="container mx-auto px-4 h-14 flex items-center gap-1">
               {/* Logo */}
-              <a href="/" className="text-lg font-black bg-gradient-to-r from-emerald-400 to-teal-400 bg-clip-text text-transparent mr-3 shrink-0">
+              <a href="/" className="text-lg font-black bg-gradient-to-r from-amber-300 to-amber-500 bg-clip-text text-transparent mr-3 shrink-0">
                 Bar POS
               </a>
 
               {/* Nav links - scrollable on mobile */}
               <div className="flex items-center gap-1 overflow-x-auto hide-scrollbar flex-1">
-                <a href="/" className="px-3 py-1.5 rounded-lg hover:bg-zinc-800 hover:text-emerald-400 transition text-xs font-medium whitespace-nowrap">Beranda</a>
-                <a href="/open-order" className="px-3 py-1.5 rounded-lg hover:bg-zinc-800 hover:text-emerald-400 transition text-xs font-medium whitespace-nowrap">Open Order</a>
-                <a href="/reservasi" className="px-3 py-1.5 rounded-lg hover:bg-zinc-800 hover:text-emerald-400 transition text-xs font-medium whitespace-nowrap">Reservasi</a>
-                <a href="/summary" className="px-3 py-1.5 rounded-lg hover:bg-zinc-800 hover:text-emerald-400 transition text-xs font-medium whitespace-nowrap">Summary</a>
-                <a href="/eod-report" className="px-3 py-1.5 rounded-lg hover:bg-zinc-800 hover:text-emerald-400 transition text-xs font-medium whitespace-nowrap">Lap. Harian</a>
-                <a href="/riwayat" className="px-3 py-1.5 rounded-lg hover:bg-zinc-800 hover:text-emerald-400 transition text-xs font-medium whitespace-nowrap">Riwayat</a>
+                <a href="/" className="px-3 py-1.5 rounded-lg hover:bg-zinc-800 hover:text-amber-300 transition text-xs font-medium whitespace-nowrap">Beranda</a>
+                <a href="/open-order" className="px-3 py-1.5 rounded-lg hover:bg-zinc-800 hover:text-amber-300 transition text-xs font-medium whitespace-nowrap">Open Order</a>
+                <a href="/reservasi" className="px-3 py-1.5 rounded-lg hover:bg-zinc-800 hover:text-amber-300 transition text-xs font-medium whitespace-nowrap">Reservasi</a>
+                <a href="/summary" className="px-3 py-1.5 rounded-lg hover:bg-zinc-800 hover:text-amber-300 transition text-xs font-medium whitespace-nowrap">Summary</a>
+                <a href="/eod-report" className="px-3 py-1.5 rounded-lg hover:bg-zinc-800 hover:text-amber-300 transition text-xs font-medium whitespace-nowrap">Lap. Harian</a>
+                <a href="/riwayat" className="px-3 py-1.5 rounded-lg hover:bg-zinc-800 hover:text-amber-300 transition text-xs font-medium whitespace-nowrap">Riwayat</a>
 
                 <div className="w-px h-5 bg-zinc-700 mx-1 shrink-0" />
 

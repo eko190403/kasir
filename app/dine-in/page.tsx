@@ -71,11 +71,11 @@ export default async function DineInPage() {
     <main className="container mx-auto p-4 space-y-6 max-w-5xl">
       <header className="flex justify-between items-center pb-4 border-b border-zinc-800">
         <div>
-          <h1 className="text-2xl font-black bg-gradient-to-r from-red-500 to-pink-500 bg-clip-text text-transparent">Floor Map</h1>
+          <h1 className="text-2xl font-black bg-gradient-to-r from-amber-300 to-amber-500 bg-clip-text text-transparent">Floor Map</h1>
           <p className="text-xs text-zinc-500 mt-1">Tap meja untuk buka bill / lihat order</p>
         </div>
         <form action={createTakeAwayOrder}>
-          <button type="submit" className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 rounded-lg text-sm font-medium transition cursor-pointer flex items-center gap-2">
+          <button type="submit" className="px-4 py-2 bg-amber-600 hover:bg-amber-500 rounded-lg text-sm font-medium transition cursor-pointer flex items-center gap-2">
             <ShoppingBag className="w-4 h-4" />
             New Take Away
           </button>

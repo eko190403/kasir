@@ -44,12 +44,19 @@ export default async function PrintEODPage({
   const totalPajak = bills.reduce((acc, b) => acc + b.pajak, 0)
   const totalService = bills.reduce((acc, b) => acc + b.service, 0)
   const totalPettyCash = shifts.reduce((acc, s) => acc + s.pengeluaran, 0)
-  const totalKasBuka = shifts.reduce((acc, s) => acc + s.kasBuka, 0)
+  const totalKasBuka = shifts.reduce((acc, s) => acc + s.kasAwal, 0)
+
+  const normalizeMethodKey = (method?: string | null) => {
+    const raw = (method ?? 'TUNAI').trim().toUpperCase()
+    if (!raw) return 'TUNAI'
+    if (raw.startsWith('SPLIT')) return 'SPLIT'
+    return raw
+  }
 
   // Payment method breakdown
   const paymentBreakdown: Record<string, number> = {}
   bills.forEach(b => {
-    const method = b.metodeBayar || 'Lainnya'
+    const method = normalizeMethodKey(b.metodeBayar)
     paymentBreakdown[method] = (paymentBreakdown[method] || 0) + b.total
   })
 
@@ -66,9 +73,16 @@ export default async function PrintEODPage({
   // Total pax (jumlah tamu)
   const totalPax = bills.length
 
-  // Balance = Total Cash Received
-  const cashReceived = paymentBreakdown['TUNAI'] || paymentBreakdown['CASH'] || 0
+  const cashReceived = Object.entries(paymentBreakdown)
+    .filter(([method]) => ['TUNAI', 'CASH'].includes(method))
+    .reduce((sum, [, amount]) => sum + amount, 0)
+  const nonCashSales = Object.entries(paymentBreakdown)
+    .filter(([method]) => !['TUNAI', 'CASH'].includes(method))
+    .reduce((sum, [, amount]) => sum + amount, 0)
   const balance = totalKasBuka + cashReceived - totalPettyCash
+  const cashTolerance = 50000
+  const cashDifference = (shifts.reduce((sum, shift) => sum + (shift.kasAkhir ?? (shift.kasAwal + (shift.totalPenjualan || 0) - (shift.pengeluaran || 0))), 0)) - (totalKasBuka + cashReceived - totalPettyCash)
+  const cashStatus = Math.abs(cashDifference) <= cashTolerance ? 'SESUAI' : Math.abs(cashDifference) <= cashTolerance * 2 ? 'WASPADA' : 'KRITIS'
 
   const fmt = (n: number) => `Rp ${n.toLocaleString('id-ID')}`
   const dashes = '─'.repeat(42)
@@ -139,6 +153,22 @@ export default async function PrintEODPage({
           </div>
         </div>
 
+        <div className="mt-3 mb-2 border-t border-dashed border-black pt-2">
+          <p className="text-center font-bold mb-1">── REKONSILIASI KAS ──</p>
+        </div>
+        <div className="flex justify-between">
+          <span>STATUS</span>
+          <span className="font-bold">{cashStatus}</span>
+        </div>
+        <div className="flex justify-between">
+          <span>SESUAI TOLERANSI</span>
+          <span>± {fmt(cashTolerance)}</span>
+        </div>
+        <div className="flex justify-between">
+          <span>SELISIH</span>
+          <span className={cashDifference >= 0 ? 'font-bold' : 'font-bold text-red-700'}>{cashDifference >= 0 ? `+ ${fmt(cashDifference)}` : `- ${fmt(Math.abs(cashDifference))}`}</span>
+        </div>
+
         {/* ─── Sales Summary ─── */}
         <div className="mt-3 mb-2 border-t border-dashed border-black pt-2">
           <p className="text-center font-bold mb-1">── SALES SUMMARY ──</p>
@@ -185,6 +215,14 @@ export default async function PrintEODPage({
           <div className="flex justify-between">
             <span>OPENING (Kas Buka)</span>
             <span>{fmt(totalKasBuka)}</span>
+          </div>
+          <div className="flex justify-between">
+            <span>PENJUALAN TUNAI</span>
+            <span>{fmt(cashReceived)}</span>
+          </div>
+          <div className="flex justify-between">
+            <span>NON TUNAI</span>
+            <span>{fmt(nonCashSales)}</span>
           </div>
           <div className="flex justify-between">
             <span>KAS KELUAR</span>

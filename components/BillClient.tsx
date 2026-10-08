@@ -87,6 +87,12 @@ export default function BillClient({
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [])
 
+  const approvalNotice = actionType === 'VOID' || actionType === 'COMP'
+    ? 'Persetujuan Manager: alasan koreksi wajib diisi dan PIN manajer akan diverifikasi untuk mencatat perubahan ke audit trail.'
+    : actionType === 'RETUR'
+      ? 'Retur memerlukan alasan jelas dan PIN manajer yang valid agar perubahan dapat ditelusuri di riwayat operasional.'
+      : 'Persetujuan Manager: alasan pembatalan wajib diisi dan PIN akan diverifikasi.'
+
   const handleAddItem = async (menuId: string) => {
     setLoading(true)
     try {
@@ -101,28 +107,31 @@ export default function BillClient({
   }
 
   const handleClose = async () => {
-    let kembali = 0
-    let terima = parseInt(uangDiterima) || 0
-    
-    if (paymentMethod === "TUNAI") {
-      if (terima < totals.total) {
-        toast.error("Uang yang dibayar kurang dari total tagihan!")
-        return
-      }
-      kembali = terima - totals.total
-    } else {
-      terima = totals.total
+    const totalTagihan = Number(totals.total) || 0
+    const terima = paymentMethod === 'TUNAI' ? (parseInt(uangDiterima) || 0) : totalTagihan
+    const kembali = paymentMethod === 'TUNAI' ? Math.max(0, terima - totalTagihan) : 0
+
+    if (totalTagihan <= 0) {
+      toast.warning('Tagihan sudah 0, tidak perlu pembayaran.')
+      return
     }
 
-    if(!confirm(`Yakin menyelesaikan pembayaran sebesar Rp ${totals.total.toLocaleString('id-ID')}?`)) return
-    
+    if (paymentMethod === 'TUNAI' && terima < totalTagihan) {
+      toast.error('Uang yang dibayar kurang dari total tagihan!')
+      return
+    }
+
+    if (!confirm(`Yakin menyelesaikan pembayaran sebesar Rp ${totalTagihan.toLocaleString('id-ID')}?`)) return
+
     setLoading(true)
     try {
-      await closeBill(billId, splitWays > 1 ? `SPLIT (${paymentMethod})` : paymentMethod)
-      window.open(`/print/receipt/${billId}?diterima=${terima}&kembali=${kembali}&metode=${paymentMethod}`, '_blank')
-      router.push("/")
-    } catch(err: any) {
+      const normalizedMethod = splitWays > 1 ? `SPLIT (${paymentMethod})` : paymentMethod
+      await closeBill(billId, normalizedMethod, terima)
+      window.open(`/print/receipt/${billId}?diterima=${terima}&kembali=${kembali}&metode=${encodeURIComponent(paymentMethod)}`, '_blank')
+      router.push('/')
+    } catch (err: any) {
       toast.error(err.message)
+    } finally {
       setLoading(false)
     }
   }
@@ -149,13 +158,17 @@ export default function BillClient({
       toast.warning("Mohon masukkan alasan")
       return
     }
+    if (actionType === "RETUR" && !actionPin) {
+      toast.warning("PIN Manajer wajib diisi untuk Retur")
+      return
+    }
     if ((actionType === "VOID" || actionType === "COMP") && !actionPin) {
       toast.warning("PIN Manajer wajib diisi untuk Void/Comp")
       return
     }
     setLoading(true)
     try {
-      if (actionType === "RETUR") { await returnItem(actionItemId, actionAlasan); toast.success('Item berhasil diretur.') }
+      if (actionType === "RETUR") { await returnItem(actionItemId, actionAlasan, actionPin); toast.success('Item berhasil diretur.') }
       if (actionType === "VOID") { await voidItem(actionItemId, actionAlasan, actionPin); toast.warning('Item berhasil di-void.') }
       if (actionType === "COMP") { await compItem(actionItemId, actionAlasan, actionPin); toast.info('Item berhasil di-comp (gratis).') }
       setActionItemId(null)
@@ -300,6 +313,9 @@ export default function BillClient({
             <div className={`text-sm font-bold ${actionType === 'RETUR' ? 'text-red-400' : actionType === 'VOID' ? 'text-amber-400' : 'text-blue-400'}`}>
               Konfirmasi {actionType}
             </div>
+            <div className="rounded-lg border border-amber-800/50 bg-amber-950/20 px-3 py-2 text-xs text-amber-200">
+              {approvalNotice}
+            </div>
             <input 
               type="text"
               placeholder={`Alasan ${actionType.toLowerCase()} (wajib)...`}
@@ -307,7 +323,7 @@ export default function BillClient({
               value={actionAlasan}
               onChange={e => setActionAlasan(e.target.value)}
             />
-            {(actionType === 'VOID' || actionType === 'COMP') && (
+            {(actionType === 'RETUR' || actionType === 'VOID' || actionType === 'COMP') && (
               <input 
                 type="password"
                 placeholder="PIN Manajer (Coba: 123456)..."
@@ -379,10 +395,10 @@ export default function BillClient({
                 <button 
                   onClick={() => setShowPayment(true)}
                   disabled={loading || initialBillItems.length === 0}
-                  className="flex-1 bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-3 rounded-lg disabled:opacity-50 transition flex items-center justify-center gap-2"
+                  className="flex-1 bg-amber-600 hover:bg-amber-500 text-white font-bold py-3 rounded-lg disabled:opacity-50 transition flex items-center justify-center gap-2"
                 >
                   Bayar (Checkout)
-                  <span className="text-xs bg-emerald-800/70 px-1.5 py-0.5 rounded font-mono">F2</span>
+                  <span className="text-xs bg-amber-800/70 px-1.5 py-0.5 rounded font-mono">F2</span>
                 </button>
               </div>
 
@@ -398,6 +414,9 @@ export default function BillClient({
           ) : showCancel ? (
             <div className="mt-4 p-4 border border-red-900 bg-red-950/30 rounded-lg space-y-3">
               <h4 className="font-bold text-red-400 text-sm mb-2">Batalkan Seluruh Bill</h4>
+              <div className="rounded-lg border border-red-800/50 bg-red-950/20 px-3 py-2 text-xs text-red-200">
+                Persetujuan Manager: pembatalan bill memerlukan alasan formal dan validasi PIN manajer sebelum perubahan dicatat ke audit trail.
+              </div>
               <div>
                 <label className="text-xs text-zinc-400">Alasan Batal</label>
                 <input 
@@ -428,7 +447,7 @@ export default function BillClient({
                     <button 
                       key={m} 
                       onClick={() => setPaymentMethod(m)}
-                      className={`flex-1 py-2 rounded text-xs font-bold transition ${paymentMethod === m ? 'bg-emerald-600 text-white' : 'bg-zinc-800 text-zinc-400'}`}
+                      className={`flex-1 py-2 rounded text-xs font-bold transition ${paymentMethod === m ? 'bg-amber-600 text-white' : 'bg-zinc-800 text-zinc-400'}`}
                     >
                       {m}
                     </button>
@@ -480,7 +499,7 @@ export default function BillClient({
 
               <div className="flex gap-2 pt-2">
                 <button onClick={() => setShowPayment(false)} className="px-4 py-2 bg-zinc-700 rounded-lg text-sm">Batal</button>
-                <button onClick={handleClose} disabled={loading} className="flex-1 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-lg text-sm py-2">Konfirmasi Lunas</button>
+                <button onClick={handleClose} disabled={loading} className="flex-1 bg-amber-600 hover:bg-amber-500 text-white font-bold rounded-lg text-sm py-2">Konfirmasi Lunas</button>
               </div>
             </div>
           )}

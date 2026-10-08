@@ -21,7 +21,10 @@ export default async function SummaryPage({ searchParams }: { searchParams: Prom
     },
     include: {
       sofa: true,
-      billItems: true
+      kasir: true,
+      billItems: {
+        include: { menuItem: true }
+      }
     },
     orderBy: { waktuTutup: 'desc' }
   })
@@ -31,6 +34,7 @@ export default async function SummaryPage({ searchParams }: { searchParams: Prom
   const totalDiskon = bills.reduce((acc, b) => acc + b.diskon, 0)
   const totalPajak = bills.reduce((acc, b) => acc + b.pajak, 0)
   const totalService = bills.reduce((acc, b) => acc + b.service, 0)
+  const avgTicket = bills.length > 0 ? totalPendapatan / bills.length : 0
 
   // Payment method breakdown
   const paymentBreakdown: Record<string, number> = {}
@@ -71,9 +75,39 @@ export default async function SummaryPage({ searchParams }: { searchParams: Prom
 
   // Fetch Shifts for Petty Cash calculation
   const shifts = await prisma.shift.findMany({
-    where: { waktuBuka: { gte: targetDate, lt: nextDate } }
+    where: { waktuBuka: { gte: targetDate, lt: nextDate } },
+    include: { kasir: true }
   })
   const totalPettyCash = shifts.reduce((acc, s) => acc + s.pengeluaran, 0)
+  const totalOpeningCash = shifts.reduce((acc, s) => acc + (s.kasAwal || 0), 0)
+  const totalCashSales = bills
+    .filter((bill) => (bill.metodeBayar || 'TUNAI').toUpperCase() === 'TUNAI')
+    .reduce((acc, bill) => acc + bill.total, 0)
+  const expectedCash = totalOpeningCash + totalCashSales - totalPettyCash
+  const actualClosingCash = shifts.reduce((acc, s) => acc + (s.kasAkhir ?? ((s.kasAwal || 0) + (s.totalPenjualan || 0) - (s.pengeluaran || 0))), 0)
+  const cashDifference = actualClosingCash - expectedCash
+  const totalNetto = Math.max(0, totalPendapatan - totalPettyCash)
+
+  const categoryBreakdown: Record<string, { nama: string, total: number, qty: number }> = {}
+  bills.forEach(b => {
+    b.billItems.filter(i => !i.isVoid && !i.diretur && !i.isComp).forEach(item => {
+      const key = item.menuItem?.kategori || 'LAINNYA'
+      if (!categoryBreakdown[key]) categoryBreakdown[key] = { nama: key, total: 0, qty: 0 }
+      categoryBreakdown[key].total += item.harga * item.qty
+      categoryBreakdown[key].qty += item.qty
+    })
+  })
+  const categoryList = Object.values(categoryBreakdown).sort((a, b) => b.total - a.total)
+
+  const cashierBreakdown: Record<string, { nama: string, total: number, transaksi: number }> = {}
+  bills.forEach(b => {
+    const key = b.kasirId || 'UNKNOWN'
+    const nama = b.kasir?.nama || 'Kasir tidak tercatat'
+    if (!cashierBreakdown[key]) cashierBreakdown[key] = { nama, total: 0, transaksi: 0 }
+    cashierBreakdown[key].total += b.total
+    cashierBreakdown[key].transaksi += 1
+  })
+  const cashierList = Object.values(cashierBreakdown).sort((a, b) => b.total - a.total)
 
   // Recent audit logs
   const auditLogs = await prisma.auditLog.findMany({
@@ -90,7 +124,7 @@ export default async function SummaryPage({ searchParams }: { searchParams: Prom
       <header className="flex flex-col md:flex-row justify-between md:items-center pb-4 border-b border-zinc-800 gap-4">
         <div>
           <h1 className="text-3xl font-bold flex items-center gap-3">
-            <PieChart className="w-8 h-8 text-emerald-500" />
+            <PieChart className="w-8 h-8 text-amber-400" />
             Ringkasan Laporan
           </h1>
           <span className="text-sm text-zinc-400">{targetDate.toLocaleDateString('id-ID', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</span>
@@ -103,16 +137,16 @@ export default async function SummaryPage({ searchParams }: { searchParams: Prom
               type="date" 
               name="date"
               defaultValue={dateString}
-              className="bg-zinc-800 border border-zinc-700 rounded-lg pl-9 pr-3 py-2 text-sm focus:outline-none focus:border-emerald-500 text-white"
+              className="bg-zinc-800 border border-zinc-700 rounded-lg pl-9 pr-3 py-2 text-sm focus:outline-none focus:border-amber-500 text-white"
             />
           </div>
-          <button type="submit" className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 rounded-lg text-sm font-bold transition shadow-lg">
+          <button type="submit" className="px-4 py-2 bg-amber-600 hover:bg-amber-500 rounded-lg text-sm font-bold transition shadow-lg">
             Filter
           </button>
           <a
             href={`/print/eod?date=${dateString}`}
             target="_blank"
-            className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 rounded-lg text-sm font-bold transition flex items-center gap-2 shadow-lg"
+            className="px-4 py-2 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 rounded-lg text-sm font-bold transition flex items-center gap-2 shadow-lg"
           >
             <Printer className="w-4 h-4" /> Struk Thermal
           </a>
@@ -127,18 +161,16 @@ export default async function SummaryPage({ searchParams }: { searchParams: Prom
       </header>
 
       {/* Summary Cards */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <div className="bg-gradient-to-br from-blue-900/40 to-zinc-900 border border-blue-800/50 p-5 rounded-2xl relative overflow-hidden group hover:border-blue-500/50 transition">
-          <div className="absolute -right-4 -top-4 bg-blue-500/10 w-24 h-24 rounded-full blur-xl group-hover:bg-blue-500/20 transition" />
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+        <div className="bg-zinc-900 border border-zinc-800 p-5 rounded-2xl">
           <div className="flex items-center gap-3 mb-2">
-            <div className="p-2 bg-blue-500/20 rounded-lg text-blue-400"><Receipt className="w-5 h-5" /></div>
-            <div className="text-blue-200 text-xs font-semibold uppercase tracking-wider">Total Transaksi</div>
+            <div className="p-2 bg-zinc-800 rounded-lg text-zinc-300"><Receipt className="w-5 h-5" /></div>
+            <div className="text-zinc-400 text-xs font-semibold uppercase tracking-wider">Total Transaksi</div>
           </div>
           <div className="text-3xl font-black text-white">{bills.length}</div>
         </div>
 
-        <div className="bg-gradient-to-br from-emerald-900/40 to-zinc-900 border border-emerald-800/50 p-5 rounded-2xl relative overflow-hidden group hover:border-emerald-500/50 transition">
-          <div className="absolute -right-4 -top-4 bg-emerald-500/10 w-24 h-24 rounded-full blur-xl group-hover:bg-emerald-500/20 transition" />
+        <div className="bg-zinc-900 border border-zinc-800 p-5 rounded-2xl">
           <div className="flex items-center gap-3 mb-2">
             <div className="p-2 bg-emerald-500/20 rounded-lg text-emerald-400"><Banknote className="w-5 h-5" /></div>
             <div className="text-emerald-200 text-xs font-semibold uppercase tracking-wider">Total Pendapatan</div>
@@ -146,8 +178,15 @@ export default async function SummaryPage({ searchParams }: { searchParams: Prom
           <div className="text-2xl font-black text-emerald-400">Rp {totalPendapatan.toLocaleString('id-ID')}</div>
         </div>
 
-        <div className="bg-gradient-to-br from-amber-900/40 to-zinc-900 border border-amber-800/50 p-5 rounded-2xl relative overflow-hidden group hover:border-amber-500/50 transition">
-          <div className="absolute -right-4 -top-4 bg-amber-500/10 w-24 h-24 rounded-full blur-xl group-hover:bg-amber-500/20 transition" />
+        <div className="bg-zinc-900 border border-zinc-800 p-5 rounded-2xl">
+          <div className="flex items-center gap-3 mb-2">
+            <div className="p-2 bg-zinc-800 rounded-lg text-zinc-300"><Activity className="w-5 h-5" /></div>
+            <div className="text-zinc-400 text-xs font-semibold uppercase tracking-wider">Avg Ticket</div>
+          </div>
+          <div className="text-2xl font-black text-white">Rp {Math.round(avgTicket).toLocaleString('id-ID')}</div>
+        </div>
+
+        <div className="bg-zinc-900 border border-zinc-800 p-5 rounded-2xl">
           <div className="flex items-center gap-3 mb-2">
             <div className="p-2 bg-amber-500/20 rounded-lg text-amber-400"><Landmark className="w-5 h-5" /></div>
             <div className="text-amber-200 text-xs font-semibold uppercase tracking-wider">Total Pajak</div>
@@ -155,8 +194,7 @@ export default async function SummaryPage({ searchParams }: { searchParams: Prom
           <div className="text-2xl font-black text-amber-400">Rp {totalPajak.toLocaleString('id-ID')}</div>
         </div>
 
-        <div className="bg-gradient-to-br from-red-900/40 to-zinc-900 border border-red-800/50 p-5 rounded-2xl relative overflow-hidden group hover:border-red-500/50 transition">
-          <div className="absolute -right-4 -top-4 bg-red-500/10 w-24 h-24 rounded-full blur-xl group-hover:bg-red-500/20 transition" />
+        <div className="bg-zinc-900 border border-zinc-800 p-5 rounded-2xl">
           <div className="flex items-center gap-3 mb-2">
             <div className="p-2 bg-red-500/20 rounded-lg text-red-400"><Percent className="w-5 h-5" /></div>
             <div className="text-red-200 text-xs font-semibold uppercase tracking-wider">Total Diskon</div>
@@ -169,7 +207,7 @@ export default async function SummaryPage({ searchParams }: { searchParams: Prom
         {/* Payment Breakdown */}
         <div className="bg-zinc-900 border border-zinc-800 p-6 rounded-2xl shadow-lg">
           <h2 className="font-bold text-lg mb-4 border-b border-zinc-800 pb-3 flex items-center gap-2">
-            <CreditCard className="w-5 h-5 text-indigo-400" />
+            <CreditCard className="w-5 h-5 text-amber-400" />
             Rincian Metode Bayar
           </h2>
           <div className="space-y-3">
@@ -188,7 +226,7 @@ export default async function SummaryPage({ searchParams }: { searchParams: Prom
         {/* Financial Breakdown */}
         <div className="bg-zinc-900 border border-zinc-800 p-6 rounded-2xl shadow-lg">
           <h2 className="font-bold text-lg mb-4 border-b border-zinc-800 pb-3 flex items-center gap-2">
-            <Landmark className="w-5 h-5 text-emerald-400" />
+            <Landmark className="w-5 h-5 text-amber-400" />
             Rincian Keuangan
           </h2>
           <div className="space-y-3 text-sm">
@@ -226,10 +264,37 @@ export default async function SummaryPage({ searchParams }: { searchParams: Prom
         </div>
       </div>
 
+      <div className="bg-zinc-900 border border-zinc-800 p-6 rounded-2xl shadow-lg">
+        <h2 className="font-bold text-lg mb-4 border-b border-zinc-800 pb-3 flex items-center gap-2">
+          <Landmark className="w-5 h-5 text-amber-400" />
+          Rekonsiliasi Kas
+        </h2>
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          <div className="bg-zinc-800 rounded-xl p-4">
+            <div className="text-xs uppercase tracking-[0.2em] text-zinc-400">Kas Awal</div>
+            <div className="mt-2 text-xl font-black text-white">Rp {totalOpeningCash.toLocaleString('id-ID')}</div>
+          </div>
+          <div className="bg-zinc-800 rounded-xl p-4">
+            <div className="text-xs uppercase tracking-[0.2em] text-zinc-400">Penjualan Tunai</div>
+            <div className="mt-2 text-xl font-black text-emerald-300">Rp {totalCashSales.toLocaleString('id-ID')}</div>
+          </div>
+          <div className="bg-zinc-800 rounded-xl p-4">
+            <div className="text-xs uppercase tracking-[0.2em] text-zinc-400">Kas Keluar</div>
+            <div className="mt-2 text-xl font-black text-red-300">- Rp {totalPettyCash.toLocaleString('id-ID')}</div>
+          </div>
+          <div className={`rounded-xl p-4 ${cashDifference >= 0 ? 'bg-emerald-950/40 border border-emerald-500/30' : 'bg-red-950/40 border border-red-500/30'}`}>
+            <div className="text-xs uppercase tracking-[0.2em] text-zinc-300">Selisih</div>
+            <div className={`mt-2 text-xl font-black ${cashDifference >= 0 ? 'text-emerald-300' : 'text-red-300'}`}>
+              {cashDifference >= 0 ? `+ Rp ${cashDifference.toLocaleString('id-ID')}` : `- Rp ${Math.abs(cashDifference).toLocaleString('id-ID')}`}
+            </div>
+          </div>
+        </div>
+      </div>
+
       {/* Top Menu Terlaris */}
       <div className="bg-zinc-900 border border-zinc-800 p-6 rounded-2xl shadow-lg">
         <h2 className="font-bold text-lg mb-4 border-b border-zinc-800 pb-3 flex items-center gap-2">
-          <Flame className="w-5 h-5 text-orange-400" />
+          <Flame className="w-5 h-5 text-amber-400" />
           Top 10 Menu Terlaris
         </h2>
         {topMenu.length === 0 ? (
@@ -250,7 +315,7 @@ export default async function SummaryPage({ searchParams }: { searchParams: Prom
                     <span className="text-zinc-400 font-medium">Rp {m.total.toLocaleString('id-ID')}</span>
                   </div>
                   <div className="w-full bg-zinc-800 rounded-full h-2 overflow-hidden">
-                    <div className="bg-gradient-to-r from-orange-600 to-amber-400 h-full rounded-full transition-all duration-1000 ease-out" style={{ width: `${pct}%` }} />
+                    <div className="bg-amber-500 h-full rounded-full transition-all duration-1000 ease-out" style={{ width: `${pct}%` }} />
                   </div>
                 </div>
               )
@@ -262,7 +327,7 @@ export default async function SummaryPage({ searchParams }: { searchParams: Prom
       {/* Sofa Performance */}
       <div className="bg-zinc-900 border border-zinc-800 p-6 rounded-2xl shadow-lg">
         <h2 className="font-bold text-lg mb-4 border-b border-zinc-800 pb-3 flex items-center gap-2">
-          <Activity className="w-5 h-5 text-violet-400" />
+          <Activity className="w-5 h-5 text-amber-400" />
           Kinerja per Sofa/Area
         </h2>
         {sofaPerfSorted.length === 0 ? (
@@ -277,13 +342,13 @@ export default async function SummaryPage({ searchParams }: { searchParams: Prom
                     <span className="flex items-center gap-3">
                       <span className="flex items-center justify-center w-6 h-6 rounded-full bg-zinc-800 text-zinc-400 text-xs font-bold">{idx + 1}</span>
                       <span className="font-medium text-zinc-200 group-hover:text-white transition">{s.nama}</span>
-                      <span className="bg-violet-500/20 text-violet-300 text-xs px-2 py-0.5 rounded-full">{s.transaksi} transaksi</span>
+                      <span className="bg-zinc-800 text-zinc-300 text-xs px-2 py-0.5 rounded-full">{s.transaksi} transaksi</span>
                       <span className="text-zinc-500 text-xs">Rata-rata: Rp {Math.round(s.total / s.transaksi).toLocaleString('id-ID')}</span>
                     </span>
                     <span className="font-bold text-emerald-400">Rp {s.total.toLocaleString('id-ID')}</span>
                   </div>
                   <div className="w-full bg-zinc-800 rounded-full h-2 overflow-hidden">
-                    <div className="bg-gradient-to-r from-indigo-500 to-violet-400 h-full rounded-full transition-all duration-1000 ease-out" style={{ width: `${pct}%` }} />
+                    <div className="bg-amber-500 h-full rounded-full transition-all duration-1000 ease-out" style={{ width: `${pct}%` }} />
                   </div>
                 </div>
               )
@@ -295,7 +360,7 @@ export default async function SummaryPage({ searchParams }: { searchParams: Prom
       {/* Recent Transactions */}
       <div className="bg-zinc-900 border border-zinc-800 p-6 rounded-2xl shadow-lg">
         <h2 className="font-bold text-lg mb-4 border-b border-zinc-800 pb-3 flex items-center gap-2">
-          <History className="w-5 h-5 text-blue-400" />
+          <History className="w-5 h-5 text-amber-400" />
           Transaksi Terbaru
         </h2>
         <div className="overflow-x-auto">
@@ -359,7 +424,7 @@ export default async function SummaryPage({ searchParams }: { searchParams: Prom
                     <td className="px-4 py-3 font-medium text-zinc-200">{item.qty}x {item.namaItem}</td>
                     <td className="px-4 py-3 text-zinc-400">{item.bill.sofa?.nama || 'Take Away'}</td>
                     <td className="px-4 py-3">
-                      <span className={`text-xs px-2 py-1 rounded-md font-bold uppercase tracking-wider ${item.isVoid ? 'bg-red-500/20 text-red-400 border border-red-500/20' : 'bg-blue-500/20 text-blue-400 border border-blue-500/20'}`}>
+                      <span className={`text-xs px-2 py-1 rounded-md font-bold uppercase tracking-wider ${item.isVoid ? 'bg-red-500/20 text-red-400 border border-red-500/20' : 'bg-amber-500/20 text-amber-400 border border-amber-500/20'}`}>
                         {item.isVoid ? 'VOID' : 'COMP'}
                       </span>
                     </td>

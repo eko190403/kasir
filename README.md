@@ -1,36 +1,140 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Kasir Bar POS
 
-## Getting Started
+Aplikasi Point of Sale untuk bisnis bar dan restoran yang dibangun dengan Next.js, Prisma, dan PostgreSQL. Sistem ini mencakup login staf, transaksi dine-in/take away/reservasi, pengelolaan menu, board dapur dan bar, serta laporan harian.
 
-First, run the development server:
+## Fitur utama
+
+- Login staf dengan PIN dan role-based access
+- Transaksi: Dine In, Take Away, Reservasi
+- Manajemen meja/sofa dan status ketersediaan
+- Menu makanan dan minuman dengan status tersedia / tidak tersedia
+- Board dapur dan bar dengan status: DIKIRIM, DIPROSES, SIAP
+- Pembayaran bill dan penutupan transaksi
+- Shift kasir dan laporan harian (EOD)
+- Audit log sederhana untuk aktivitas penting
+- Print struk / export CSV
+
+## Stack teknologi
+
+- Next.js 16
+- React 19
+- TypeScript
+- Prisma ORM
+- PostgreSQL
+- Supabase Realtime (untuk board dapur/bar)
+- JWT cookie session
+- Tailwind CSS
+
+## Struktur utama
+
+- `app/` — halaman aplikasi dan server actions
+- `components/` — komponen UI dan realtime board
+- `lib/` — utilitas, auth, kalkulasi bill, supabase client
+- `prisma/` — schema Prisma dan seed script
+- `public/` — aset statis
+
+## Persyaratan
+
+- Node.js 20+
+- PostgreSQL 14+
+- npm
+- (Opsional) Supabase project untuk realtime
+
+## Setup lokal
+
+1. Clone repo
+2. Copy file `.env.example` ke `.env` dan isi nilai sesuai environment lokal
+3. Buat database PostgreSQL baru
+4. Install dependency
+
+```bash
+npm install
+```
+
+5. Generate Prisma client
+
+```bash
+npx prisma generate
+```
+
+6. Push schema ke database
+
+```bash
+npm run db:push
+```
+
+7. Jalankan seeding data awal
+
+```bash
+npm run db:seed
+```
+
+8. Jalankan server pengembangan
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Buka `http://localhost:3000`.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Konfigurasi environment
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+Contoh isi `.env`:
 
-## Learn More
+```env
+DATABASE_URL="postgresql://postgres:password@localhost:5432/kasir_bar?schema=public"
+DIRECT_URL="postgresql://postgres:password@localhost:5432/kasir_bar?schema=public"
+NEXT_PUBLIC_SUPABASE_URL="https://your-project.supabase.co"
+NEXT_PUBLIC_SUPABASE_ANON_KEY="your-supabase-anon-key"
+JWT_SECRET="gantikan-dengan-string-rahasia-yang-kuat"
+```
 
-To learn more about Next.js, take a look at the following resources:
+## Data default yang di-seed
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+Setelah menjalankan `npm run db:seed`, sistem akan menyiapkan:
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+- Sofa / meja default sesuai kebutuhan bar
+- Menu makanan dan minuman awal
+- User staf default
+- Setting pajak, service charge, dan happy hour
 
-## Deploy on Vercel
+### Login default
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+- PIN staf umum: `123456`
+- PIN manager: `999999`
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Role default yang disediakan:
+
+- `KASIR`
+- `PELAYAN`
+- `BARTENDER`
+- `DAPUR`
+- `MANAJER`
+
+## Perintah umum
+
+```bash
+npm run dev
+npm run build
+npm run lint
+npx prisma studio
+npm run db:seed
+npm run db:push
+```
+
+## Catatan pengembangan
+
+Project ini masih dalam fase pengembangan aktif. Prioritas utama yang perlu terus dibenahi adalah:
+
+1. dokumentasi setup dan operasional
+2. validasi per-role dan permission
+3. flow pembayaran serta closing shift
+4. laporan harian dan analitik
+5. peningkatan hardening dan production readiness
+
+## Referensi cepat
+
+- [prisma/schema.prisma](./prisma/schema.prisma)
+- [prisma/seed.ts](./prisma/seed.ts)
+- [app/actions.ts](./app/actions.ts)
+- [lib/bill.ts](./lib/bill.ts)

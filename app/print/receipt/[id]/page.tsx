@@ -2,6 +2,13 @@ import { prisma } from "@/lib/prisma"
 
 export const instant = false
 
+const formatMoney = (value: number) => `Rp ${Math.round(value).toLocaleString('id-ID')}`
+
+const safeNumber = (value: string | number | undefined, fallback: number) => {
+  const parsed = Number(value ?? fallback)
+  return Number.isFinite(parsed) ? parsed : fallback
+}
+
 export default async function PrintReceiptPage({ 
   params,
   searchParams
@@ -26,108 +33,115 @@ export default async function PrintReceiptPage({
 
   if (!bill) return <div>Bill not found</div>
 
+  const paymentMethod = (metode || bill.metodeBayar || 'TUNAI').toUpperCase()
+  const paidAmount = safeNumber(diterima, bill.total)
+  const changeAmount = safeNumber(kembali, Math.max(0, paidAmount - bill.total))
+  const normalItems = bill.billItems.filter((item) => !item.isVoid && !item.diretur && !item.isComp)
+  const compItems = bill.billItems.filter((item) => item.isComp)
+
   return (
     <div className="bg-white text-black min-h-screen p-8 font-mono text-sm print:p-0">
       <div className="max-w-[80mm] mx-auto pb-8">
-        {/* Header */}
         <div className="text-center mb-6 border-b border-dashed border-black pb-4">
-          <h1 className="text-2xl font-bold">{namaBar}</h1>
-          <p>{alamatBar}</p>
-          <p className="font-bold mt-2">RECEIPT / LUNAS</p>
+          <h1 className="text-[22px] font-black tracking-tight">{namaBar}</h1>
+          <p className="text-[10px] mt-1">{alamatBar}</p>
+          <p className="font-bold mt-2 text-[11px] tracking-[0.2em]">RECEIPT / LUNAS</p>
         </div>
 
-        {/* Info */}
-        <div className="mb-4">
-          <div className="flex justify-between">
-            <span>Bill:</span>
-            <span>{bill.nomorBill ? `#${bill.nomorBill.toString().padStart(3, '0')}` : bill.id.split('-')[0].toUpperCase()}</span>
+        <div className="mb-4 space-y-1 text-[11px]">
+          <div className="flex justify-between gap-3">
+            <span>Bill</span>
+            <span>{bill.nomorBill ? `#${bill.nomorBill.toString().padStart(3, '0')}` : bill.id.slice(0, 6).toUpperCase()}</span>
           </div>
-          <div className="flex justify-between">
-            <span>Waktu:</span>
+          <div className="flex justify-between gap-3">
+            <span>Waktu</span>
             <span>{new Date(bill.waktuTutup || bill.waktuBuka).toLocaleString('id-ID')}</span>
           </div>
-          <div className="flex justify-between">
-            <span>Kasir:</span>
+          <div className="flex justify-between gap-3">
+            <span>Kasir</span>
             <span>{bill.kasir?.nama || '-'}</span>
           </div>
-          <div className="flex justify-between">
-            <span>Sofa:</span>
+          <div className="flex justify-between gap-3">
+            <span>Sofa</span>
             <span>{bill.sofa?.nama || bill.tipe}</span>
           </div>
         </div>
 
-        {/* Items */}
         <div className="border-t border-b border-dashed border-black py-4 mb-4">
-          {bill.billItems.filter(i => !i.isVoid && !i.diretur && !i.isComp).map(item => (
-            <div key={item.id} className="mb-2">
-              <div className="flex justify-between">
-                <span>{item.namaItem}</span>
-                <span>Rp {(item.harga * item.qty).toLocaleString('id-ID')}</span>
-              </div>
-              <div className="text-gray-500 ml-4">
-                {item.qty} x {item.harga.toLocaleString('id-ID')}
-              </div>
-            </div>
-          ))}
-          {/* Show Comp items */}
-          {bill.billItems.filter(i => i.isComp).map(item => (
-            <div key={item.id} className="mb-2">
-              <div className="flex justify-between">
-                <span>{item.namaItem} (COMP)</span>
-                <span>Rp 0</span>
-              </div>
-              <div className="text-gray-500 ml-4 line-through">
-                {item.qty} x {item.harga.toLocaleString('id-ID')}
-              </div>
-            </div>
-          ))}
+          {normalItems.length === 0 && compItems.length === 0 ? (
+            <p className="text-center text-gray-500 italic text-[10px]">Tidak ada item</p>
+          ) : (
+            <>
+              {normalItems.map(item => (
+                <div key={item.id} className="mb-2">
+                  <div className="flex justify-between gap-2">
+                    <span className="max-w-[60%] break-words">{item.namaItem}</span>
+                    <span>{formatMoney(item.harga * item.qty)}</span>
+                  </div>
+                  <div className="text-gray-500 ml-1 text-[10px]">
+                    {item.qty} x {formatMoney(item.harga)}
+                    {item.catatan ? ` • ${item.catatan}` : ''}
+                  </div>
+                </div>
+              ))}
+
+              {compItems.map(item => (
+                <div key={item.id} className="mb-2">
+                  <div className="flex justify-between gap-2 text-gray-700">
+                    <span className="max-w-[60%] break-words line-through">{item.namaItem} (COMP)</span>
+                    <span>Rp 0</span>
+                  </div>
+                  <div className="text-gray-500 ml-1 text-[10px] line-through">
+                    {item.qty} x {formatMoney(item.harga)}
+                  </div>
+                </div>
+              ))}
+            </>
+          )}
         </div>
 
-        {/* Totals */}
-        <div className="space-y-1 text-right">
+        <div className="space-y-1 text-[11px]">
           <div className="flex justify-between">
             <span>Subtotal</span>
-            <span>Rp {bill.subtotal.toLocaleString('id-ID')}</span>
+            <span>{formatMoney(bill.subtotal)}</span>
           </div>
           {bill.diskon > 0 && (
-            <div className="flex justify-between">
+            <div className="flex justify-between text-red-700">
               <span>Diskon</span>
-              <span>-Rp {bill.diskon.toLocaleString('id-ID')}</span>
+              <span>- {formatMoney(bill.diskon)}</span>
             </div>
           )}
           <div className="flex justify-between">
-            <span>Service Charge</span>
-            <span>Rp {bill.service.toLocaleString('id-ID')}</span>
+            <span>Service</span>
+            <span>{formatMoney(bill.service)}</span>
           </div>
           <div className="flex justify-between">
             <span>Pajak</span>
-            <span>Rp {bill.pajak.toLocaleString('id-ID')}</span>
+            <span>{formatMoney(bill.pajak)}</span>
           </div>
-          <div className="flex justify-between font-bold text-lg mt-2 pt-2 border-t border-dashed border-black">
+          <div className="flex justify-between font-black text-base mt-2 pt-2 border-t border-dashed border-black">
             <span>TOTAL</span>
-            <span>Rp {bill.total.toLocaleString('id-ID')}</span>
+            <span>{formatMoney(bill.total)}</span>
           </div>
         </div>
 
-        {/* Payment Info */}
-        <div className="mt-4 pt-4 border-t border-dashed border-black space-y-1 text-right">
+        <div className="mt-4 pt-4 border-t border-dashed border-black space-y-1 text-[11px]">
           <div className="flex justify-between font-bold">
-            <span>DIBAYAR ({metode || bill.metodeBayar || 'TUNAI'})</span>
-            <span>Rp {(parseInt(diterima || "0") || bill.total).toLocaleString('id-ID')}</span>
+            <span>DIBAYAR ({paymentMethod})</span>
+            <span>{formatMoney(paidAmount)}</span>
           </div>
           <div className="flex justify-between">
             <span>KEMBALI</span>
-            <span>Rp {(parseInt(kembali || "0")).toLocaleString('id-ID')}</span>
+            <span>{formatMoney(changeAmount)}</span>
           </div>
         </div>
 
-        <div className="text-center mt-8 border-t border-dashed border-black pt-4">
-          <p className="font-bold">TERIMA KASIH</p>
-          <p>Layanan Anda kebanggaan kami.</p>
+        <div className="text-center mt-8 border-t border-dashed border-black pt-4 text-[10px]">
+          <p className="font-bold text-[12px]">TERIMA KASIH</p>
+          <p className="mt-1">Layanan Anda kebanggaan kami.</p>
         </div>
       </div>
 
-      {/* Auto print script */}
       <script dangerouslySetInnerHTML={{ __html: `window.print()` }} />
     </div>
   )

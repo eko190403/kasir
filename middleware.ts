@@ -31,10 +31,24 @@ export async function middleware(request: NextRequest) {
 
   // Role-based protection
   const user = session.user
-  
-  // Only MANAJER can access settings, summary, staf, eod-report, and riwayat
+
   const managerOnlyRoutes = ['/settings', '/summary', '/staf', '/eod-report', '/riwayat']
   if (managerOnlyRoutes.some(route => path.startsWith(route)) && user.peran !== 'MANAJER') {
+    return NextResponse.redirect(new URL('/', request.url))
+  }
+
+  const kitchenOnlyRoutes = ['/kitchen']
+  if (kitchenOnlyRoutes.some(route => path.startsWith(route)) && !['DAPUR', 'MANAJER', 'KASIR'].includes(user.peran)) {
+    return NextResponse.redirect(new URL('/', request.url))
+  }
+
+  const menuManagementRoutes = ['/menu']
+  if (menuManagementRoutes.some(route => path.startsWith(route)) && !['MANAJER', 'KASIR'].includes(user.peran)) {
+    return NextResponse.redirect(new URL('/', request.url))
+  }
+
+  const barOnlyRoutes = ['/bar']
+  if (barOnlyRoutes.some(route => path.startsWith(route)) && !['BARTENDER', 'MANAJER', 'KASIR'].includes(user.peran)) {
     return NextResponse.redirect(new URL('/', request.url))
   }
 

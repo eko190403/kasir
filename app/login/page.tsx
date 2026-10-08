@@ -70,8 +70,8 @@ export default function LoginPage() {
       <div className="w-full max-w-sm">
         {/* Logo */}
         <div className="flex flex-col items-center mb-8">
-          <div className="w-16 h-16 bg-emerald-500/10 rounded-full flex items-center justify-center mb-4">
-            <KeyRound className="w-8 h-8 text-emerald-500" />
+          <div className="w-16 h-16 bg-amber-500/10 rounded-full flex items-center justify-center mb-4">
+            <KeyRound className="w-8 h-8 text-amber-400" />
           </div>
           <h1 className="text-2xl font-bold text-white">Kasir Bar</h1>
           <p className="text-zinc-500 text-sm mt-1">Point of Sale System</p>
@@ -135,7 +135,7 @@ export default function LoginPage() {
                     key={i}
                     className={`w-4 h-4 rounded-full border-2 transition-all ${
                       i < pin.length
-                        ? "bg-emerald-500 border-emerald-500 scale-110"
+                        ? "bg-amber-500 border-amber-500 scale-110"
                         : "bg-transparent border-zinc-600"
                     }`}
                   />
@@ -167,7 +167,7 @@ export default function LoginPage() {
               <button
                 type="submit"
                 disabled={loading || pin.length < 4}
-                className="w-full py-3 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-xl transition disabled:opacity-40 disabled:cursor-not-allowed"
+                className="w-full py-3 bg-amber-600 hover:bg-amber-500 text-white font-bold rounded-xl transition disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 {loading ? "Memverifikasi..." : "Masuk →"}
               </button>
