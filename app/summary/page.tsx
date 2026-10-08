@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/prisma"
 import { connection } from "next/server"
-import { Receipt, Banknote, Landmark, Percent, Download, CreditCard, Flame, Activity, ShieldAlert, History, Calendar, PieChart } from "lucide-react"
+import { Receipt, Banknote, Landmark, Percent, Download, CreditCard, Flame, Activity, ShieldAlert, History, Calendar, PieChart, Printer } from "lucide-react"
 
 import { getStartOfDayWIB, getEndOfDayWIB } from "@/lib/timezone"
 
@@ -96,7 +96,7 @@ export default async function SummaryPage({ searchParams }: { searchParams: Prom
           <span className="text-sm text-zinc-400">{targetDate.toLocaleDateString('id-ID', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</span>
         </div>
         
-        <form className="flex items-center gap-2">
+        <form className="flex flex-wrap items-center gap-2">
           <div className="relative">
             <Calendar className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400" />
             <input 
@@ -109,6 +109,13 @@ export default async function SummaryPage({ searchParams }: { searchParams: Prom
           <button type="submit" className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 rounded-lg text-sm font-bold transition shadow-lg">
             Filter
           </button>
+          <a
+            href={`/print/eod?date=${dateString}`}
+            target="_blank"
+            className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 rounded-lg text-sm font-bold transition flex items-center gap-2 shadow-lg"
+          >
+            <Printer className="w-4 h-4" /> Struk Thermal
+          </a>
           <a
             href={`/api/export-csv?date=${dateString}`}
             className="px-4 py-2 bg-zinc-700 hover:bg-zinc-600 rounded-lg text-sm font-bold transition flex items-center gap-2 shadow-lg"
