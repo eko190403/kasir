@@ -12,34 +12,31 @@ export async function getSettings() {
   }
 }
 
-export async function calculateBillTotal(billId: string) {
-  const bill = await prisma.bill.findUnique({
-    where: { id: billId },
-    include: { billItems: true }
-  })
 
-  if (!bill) throw new Error("Bill not found")
 
-  // Use snapshot rates from bill; fallback to Settings for legacy bills (pajakPct=0 && servicePct=0)
-  let pajakRate = bill.pajakPct
-  let serviceRate = bill.servicePct
-
-  if (pajakRate === 0 && serviceRate === 0) {
-    const settings = await getSettings()
-    pajakRate = settings.pajak
-    serviceRate = settings.serviceCharge
-  }
-
+// Pure function untuk testing dan kalkulasi tanpa efek samping
+export function computeBillMathematics({
+  items,
+  diskon,
+  pajakRate,
+  serviceRate,
+  pembulatanRatusan
+}: {
+  items: { harga: number, qty: number, diretur: boolean, isVoid: boolean, isComp: boolean }[],
+  diskon: number,
+  pajakRate: number,
+  serviceRate: number,
+  pembulatanRatusan: boolean
+}) {
   // 1. Subtotal: only items that are not returned/voided/comped
   let subtotal = 0
-  bill.billItems.forEach(item => {
+  items.forEach(item => {
     if (!item.diretur && !item.isVoid && !item.isComp) {
       subtotal += item.harga * item.qty
     }
   })
 
   // 2. Diskon
-  const diskon = bill.diskon
   let totalSetelahDiskon = subtotal - diskon
   if (totalSetelahDiskon < 0) totalSetelahDiskon = 0
 
@@ -53,11 +50,39 @@ export async function calculateBillTotal(billId: string) {
   // 5. Total
   let total = totalKenaPajak + pajak
 
-  // 6. Pembulatan (only from Settings, not snapshot)
-  const settings = await getSettings()
-  if (settings.pembulatanRatusan) {
+  // 6. Pembulatan
+  if (pembulatanRatusan) {
     total = Math.round(total / 100) * 100
   }
+
+  return { subtotal, diskon, service, pajak, total }
+}
+
+export async function calculateBillTotal(billId: string) {
+  const bill = await prisma.bill.findUnique({
+    where: { id: billId },
+    include: { billItems: true }
+  })
+
+  if (!bill) throw new Error("Bill not found")
+
+  // Use snapshot rates from bill; fallback to Settings for legacy bills
+  let pajakRate = bill.pajakPct
+  let serviceRate = bill.servicePct
+  const settings = await getSettings()
+
+  if (pajakRate === 0 && serviceRate === 0) {
+    pajakRate = settings.pajak
+    serviceRate = settings.serviceCharge
+  }
+
+  const { subtotal, diskon, service, pajak, total } = computeBillMathematics({
+    items: bill.billItems,
+    diskon: bill.diskon,
+    pajakRate,
+    serviceRate,
+    pembulatanRatusan: settings.pembulatanRatusan
+  })
 
   await prisma.bill.update({
     where: { id: billId },

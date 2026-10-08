@@ -2,6 +2,8 @@ import { prisma } from "@/lib/prisma"
 import { connection } from "next/server"
 import { Receipt, Banknote, Landmark, Percent, Download, CreditCard, Flame, Activity, ShieldAlert, History, Calendar, PieChart } from "lucide-react"
 
+import { getStartOfDayWIB, getEndOfDayWIB } from "@/lib/timezone"
+
 export const instant = false
 
 export default async function SummaryPage({ searchParams }: { searchParams: Promise<{ date?: string }> }) {
@@ -9,11 +11,8 @@ export default async function SummaryPage({ searchParams }: { searchParams: Prom
   const { date } = await searchParams
   
   // Set target date (default to today)
-  const targetDate = date ? new Date(date) : new Date()
-  targetDate.setHours(0, 0, 0, 0)
-  
-  const nextDate = new Date(targetDate)
-  nextDate.setDate(targetDate.getDate() + 1)
+  const targetDate = date ? getStartOfDayWIB(date) : getStartOfDayWIB()
+  const nextDate = getEndOfDayWIB(targetDate)
   
   const bills = await prisma.bill.findMany({
     where: {

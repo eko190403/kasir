@@ -2,16 +2,15 @@ import { prisma } from "@/lib/prisma"
 import { NextRequest, NextResponse } from "next/server"
 import { connection } from "next/server"
 
+import { getStartOfDayWIB, getEndOfDayWIB } from "@/lib/timezone"
+
 export async function GET(req: NextRequest) {
   await connection()
   const { searchParams } = new URL(req.url)
   const dateStr = searchParams.get('date')
 
-  const targetDate = dateStr ? new Date(dateStr) : new Date()
-  targetDate.setHours(0, 0, 0, 0)
-
-  const nextDate = new Date(targetDate)
-  nextDate.setDate(targetDate.getDate() + 1)
+  const targetDate = dateStr ? getStartOfDayWIB(dateStr) : getStartOfDayWIB()
+  const nextDate = getEndOfDayWIB(targetDate)
 
   const bills = await prisma.bill.findMany({
     where: {

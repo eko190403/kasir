@@ -6,6 +6,7 @@ import { revalidatePath } from "next/cache"
 import { redirect } from "next/navigation"
 import bcrypt from "bcryptjs"
 import { setSession, logout as clearSession, getSession } from "@/lib/auth"
+import { getStartOfDayWIB, getEndOfDayWIB } from "@/lib/timezone"
 
 // ─── Auth Helpers ───────────────────────────────────────────────────
 async function requireSession() {
@@ -32,8 +33,7 @@ export async function createTakeAwayOrder() {
   const shiftId = shift ? shift.id : null
 
   // Calculate nomorBill (increment for today)
-  const todayStart = new Date()
-  todayStart.setHours(0, 0, 0, 0)
+  const todayStart = getStartOfDayWIB()
   const todayCount = await prisma.bill.count({ where: { waktuBuka: { gte: todayStart } } })
   const nomorBill = todayCount + 1
 
@@ -79,55 +79,56 @@ export async function getKitchenItems(kategori: "MAKANAN" | "MINUMAN") {
 
 
 export async function createOrGetActiveBill(sofaId: string) {
-  // Check if sofa has an open bill
-  let bill = await prisma.bill.findFirst({
-    where: { sofaId, status: "TERBUKA" },
-    include: { billItems: true }
-  })
-
-  if (!bill) {
-    const session = await getSession()
-    const kasirId = session ? session.user.id : undefined
-    let shiftId = undefined
-    
-    if (kasirId) {
-      const shift = await prisma.shift.findFirst({ where: { kasirId, waktuTutup: null } })
-      if (shift) shiftId = shift.id
-    }
-
-    const todayStart = new Date()
-    todayStart.setHours(0, 0, 0, 0)
-    const todayCount = await prisma.bill.count({ where: { waktuBuka: { gte: todayStart } } })
-    const nomorBill = todayCount + 1
-
-    const pajakSetting = await prisma.setting.findUnique({ where: { kunci: 'PAJAK' } })
-    const serviceSetting = await prisma.setting.findUnique({ where: { kunci: 'SERVICE_CHARGE' } })
-    const pajakPct = parseInt(pajakSetting?.nilai || '10')
-    const servicePct = parseInt(serviceSetting?.nilai || '5')
-
-    // Open new bill
-    bill = await prisma.bill.create({
-      data: {
-        sofaId,
-        tipe: "DINE_IN",
-        status: "TERBUKA",
-        kasirId,
-        shiftId,
-        nomorBill,
-        pajakPct,
-        servicePct
-      },
+  return await prisma.$transaction(async (tx) => {
+    // Check if sofa has an open bill
+    let bill = await tx.bill.findFirst({
+      where: { sofaId, status: "TERBUKA" },
       include: { billItems: true }
     })
-    
-    // Update sofa status
-    await prisma.sofa.update({
-      where: { id: sofaId },
-      data: { status: "TERISI" }
-    })
-  }
 
-  return bill
+    if (!bill) {
+      const session = await getSession()
+      const kasirId = session ? session.user.id : undefined
+      let shiftId = undefined
+      
+      if (kasirId) {
+        const shift = await tx.shift.findFirst({ where: { kasirId, waktuTutup: null } })
+        if (shift) shiftId = shift.id
+      }
+
+      const todayStart = getStartOfDayWIB()
+      const todayCount = await tx.bill.count({ where: { waktuBuka: { gte: todayStart } } })
+      const nomorBill = todayCount + 1
+
+      const pajakSetting = await tx.setting.findUnique({ where: { kunci: 'PAJAK' } })
+      const serviceSetting = await tx.setting.findUnique({ where: { kunci: 'SERVICE_CHARGE' } })
+      const pajakPct = parseInt(pajakSetting?.nilai || '10')
+      const servicePct = parseInt(serviceSetting?.nilai || '5')
+
+      // Open new bill
+      bill = await tx.bill.create({
+        data: {
+          sofaId,
+          tipe: "DINE_IN",
+          status: "TERBUKA",
+          kasirId,
+          shiftId,
+          nomorBill,
+          pajakPct,
+          servicePct
+        },
+        include: { billItems: true }
+      })
+      
+      // Update sofa status
+      await tx.sofa.update({
+        where: { id: sofaId },
+        data: { status: "TERISI" }
+      })
+    }
+
+    return bill
+  }, { isolationLevel: 'Serializable' })
 }
 
 export async function cleanupEmptyBills() {
@@ -523,6 +524,14 @@ export async function closeShift(shiftId: string) {
   const shift = await prisma.shift.findUnique({ where: { id: shiftId } })
   if (!shift) throw new Error('Shift not found')
 
+  const openBills = await prisma.bill.count({
+    where: { shiftId, status: 'TERBUKA' }
+  })
+
+  if (openBills > 0) {
+    throw new Error(`Tidak bisa tutup shift. Masih ada ${openBills} tagihan yang belum lunas/ditutup.`)
+  }
+
   // Hitung total penjualan selama shift
   const bills = await prisma.bill.findMany({
     where: {
@@ -621,8 +630,6 @@ export async function deleteUser(id: string) {
   revalidatePath('/staf')
 }
 
-// --- Rate Limiter (in-memory, resets on server restart) ---
-const loginAttempts = new Map<string, { count: number; lockedUntil: number }>()
 const MAX_ATTEMPTS = 5
 const LOCK_DURATION_MS = 15 * 60 * 1000 // 15 menit
 
@@ -638,32 +645,41 @@ export async function getActiveUsers() {
 export async function loginWithUserAndPin(userId: string, pin: string) {
   if (!userId || !pin) return { error: 'Pilih nama dan masukkan PIN' }
 
-  const now = Date.now()
-  const attempts = loginAttempts.get(userId)
-
-  if (attempts && now < attempts.lockedUntil) {
-    const menitSisa = Math.ceil((attempts.lockedUntil - now) / 60000)
-    return { error: `Akun terkunci. Coba lagi dalam ${menitSisa} menit.` }
-  }
-
   const user = await prisma.user.findUnique({ where: { id: userId, isDeleted: false } })
   if (!user || !user.pin) return { error: 'Pengguna tidak ditemukan.' }
+
+  const now = new Date()
+
+  // Check if locked
+  if (user.lockedUntil && now < user.lockedUntil) {
+    const menitSisa = Math.ceil((user.lockedUntil.getTime() - now.getTime()) / 60000)
+    return { error: `Akun terkunci. Coba lagi dalam ${menitSisa} menit.` }
+  }
 
   const pinValid = await bcrypt.compare(pin, user.pin)
 
   if (!pinValid) {
-    const current = loginAttempts.get(userId) || { count: 0, lockedUntil: 0 }
-    const newCount = current.count + 1
+    const newCount = user.failedAttempts + 1
     if (newCount >= MAX_ATTEMPTS) {
-      loginAttempts.set(userId, { count: newCount, lockedUntil: now + LOCK_DURATION_MS })
+      await prisma.user.update({
+        where: { id: userId },
+        data: { failedAttempts: newCount, lockedUntil: new Date(now.getTime() + LOCK_DURATION_MS) }
+      })
       return { error: `PIN salah ${MAX_ATTEMPTS}x. Akun dikunci selama 15 menit.` }
     }
-    loginAttempts.set(userId, { count: newCount, lockedUntil: 0 })
+    
+    await prisma.user.update({
+      where: { id: userId },
+      data: { failedAttempts: newCount }
+    })
     return { error: `PIN salah. Sisa percobaan: ${MAX_ATTEMPTS - newCount}` }
   }
 
   // Login berhasil — reset counter
-  loginAttempts.delete(userId)
+  await prisma.user.update({
+    where: { id: userId },
+    data: { failedAttempts: 0, lockedUntil: null }
+  })
 
   await setSession({ id: user.id, nama: user.nama, peran: user.peran })
   return { success: true }
@@ -716,10 +732,8 @@ export async function verifyAndUpdatePin(pinLama: string, pinBaru: string) {
 }
 
 export async function getEndOfDayReport(tanggal: string) {
-  const start = new Date(tanggal)
-  start.setHours(0, 0, 0, 0)
-  const end = new Date(tanggal)
-  end.setHours(23, 59, 59, 999)
+  const start = getStartOfDayWIB(tanggal)
+  const end = getEndOfDayWIB(tanggal)
 
   const [bills, voidItems, compItems, shifts, auditLogs] = await Promise.all([
     prisma.bill.findMany({

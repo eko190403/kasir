@@ -155,6 +155,10 @@ model User {
   pin      String?    // PIN untuk login (hashed)
   isDeleted Boolean   @default(false)
 
+  // Rate limiting fields
+  failedAttempts Int @default(0)
+  lockedUntil    DateTime?
+
   bills    Bill[]     @relation("KasirBill")
   shifts   Shift[]
   auditLogs AuditLog[]
