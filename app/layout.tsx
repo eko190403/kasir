@@ -5,6 +5,7 @@ import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import LogoutButton from "@/components/LogoutButton";
 import ToasterProvider from "@/components/ToasterProvider";
+import AutoLogout from "@/components/AutoLogout";
 import { getSession } from "@/lib/auth";
 
 const geistSans = Geist({
@@ -32,6 +33,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
     >
       <body className="min-h-full flex flex-col bg-zinc-950 text-white">
         <ToasterProvider />
+        {session && <AutoLogout />}
         {session && (
           <nav className="border-b border-zinc-800 bg-zinc-900/80 backdrop-blur-md sticky top-0 z-50">
             <div className="container mx-auto px-4 h-14 flex items-center gap-1">

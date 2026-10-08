@@ -218,21 +218,38 @@ export async function updateItemQty(itemId: string, delta: number) {
   revalidatePath('/')
 }
 
+export async function cancelLunasBill(billId: string, alasan: string, pin: string) {
+  const session = await getSession()
+  await requireManager(pin) // Use the standard manager check
+
+  const bill = await prisma.bill.findUnique({ where: { id: billId } })
+  if (!bill) throw new Error('Bill not found')
+  if (bill.status !== "LUNAS") throw new Error('Bill ini tidak berstatus LUNAS')
+
+  // Cancel bill
+  await prisma.bill.update({
+    where: { id: billId },
+    data: { 
+      status: "BATAL",
+    }
+  })
+
+  // Log audit
+  await prisma.auditLog.create({
+    data: {
+      userId: session?.user?.id,
+      aksi: 'KOREKSI_BATAL_BILL_LUNAS',
+      entitas: 'Bill',
+      detail: `Batalkan Bill ${bill.nomorBill || bill.id} Lunas. Alasan: ${alasan}`
+    }
+  })
+
+  revalidatePath('/riwayat')
+}
+
 export async function cancelBill(billId: string, alasan: string, pin: string) {
   const session = await getSession()
-  const pinManajer = await prisma.setting.findUnique({ where: { kunci: 'PIN_MANAJER' } })
-
-  let pinValid = false
-  if (pinManajer) {
-    try {
-      pinValid = await bcrypt.compare(pin, pinManajer.nilai)
-    } catch {
-      pinValid = pin === pinManajer.nilai
-    }
-  } else {
-    pinValid = pin === '123456'
-  }
-  if (!pinValid) throw new Error('PIN Manajer salah')
+  await requireManager(pin)
 
   const bill = await prisma.bill.findUnique({ where: { id: billId } })
   if (!bill) throw new Error('Bill not found')

@@ -1,8 +1,9 @@
 "use client"
 
 import { useState, useTransition } from "react"
-import { searchRiwayatBill, exportDatabaseToCSV } from "@/app/actions"
-import { Search, Download, FileText, Printer, ChevronLeft, ChevronRight } from "lucide-react"
+import { searchRiwayatBill, exportDatabaseToCSV, cancelLunasBill } from "@/app/actions"
+import { Search, Download, FileText, Printer, ChevronLeft, ChevronRight, AlertTriangle } from "lucide-react"
+import { toast } from "sonner"
 
 export default function RiwayatClient() {
   const [query, setQuery] = useState("")
@@ -13,6 +14,10 @@ export default function RiwayatClient() {
   const [downloading, setDownloading] = useState(false)
   const [hasSearched, setHasSearched] = useState(false)
   const [isPending, startTransition] = useTransition()
+  const [cancelModal, setCancelModal] = useState<{ isOpen: boolean, billId: string }>({ isOpen: false, billId: '' })
+  const [cancelAlasan, setCancelAlasan] = useState("")
+  const [cancelPin, setCancelPin] = useState("")
+  const [canceling, setCanceling] = useState(false)
 
   const doSearch = (q: string, p: number) => {
     startTransition(async () => {
@@ -49,6 +54,26 @@ export default function RiwayatClient() {
   }
 
   const fmt = (n: number) => `Rp ${n.toLocaleString('id-ID')}`
+
+  const handleCancelSubmit = async () => {
+    if (!cancelAlasan.trim() || !cancelPin.trim()) {
+      toast.warning("Alasan dan PIN Manajer wajib diisi")
+      return
+    }
+    setCanceling(true)
+    try {
+      await cancelLunasBill(cancelModal.billId, cancelAlasan, cancelPin)
+      toast.success("Bill berhasil dibatalkan")
+      setCancelModal({ isOpen: false, billId: '' })
+      setCancelAlasan("")
+      setCancelPin("")
+      doSearch(query, page) // Refresh current page
+    } catch (err: any) {
+      toast.error(err.message)
+    } finally {
+      setCanceling(false)
+    }
+  }
 
   return (
     <div className="space-y-6">
@@ -150,14 +175,23 @@ export default function RiwayatClient() {
                           {fmt(b.total)}
                         </td>
                         <td className="py-3 text-right">
-                          <a
-                            href={`/print/receipt/${b.id}?metode=${b.metodeBayar}`}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="inline-flex items-center gap-1 px-3 py-1.5 bg-zinc-700 hover:bg-zinc-600 rounded-lg text-xs font-bold transition"
-                          >
-                            <Printer className="w-3 h-3" /> Cetak
-                          </a>
+                          <div className="flex justify-end gap-2">
+                            <button
+                              onClick={() => setCancelModal({ isOpen: true, billId: b.id })}
+                              className="inline-flex items-center gap-1 px-3 py-1.5 bg-red-950/40 hover:bg-red-900/60 text-red-400 rounded-lg text-xs font-bold transition border border-red-900/50"
+                              title="Batal / Koreksi"
+                            >
+                              <AlertTriangle className="w-3 h-3" /> Koreksi
+                            </button>
+                            <a
+                              href={`/print/receipt/${b.id}?metode=${b.metodeBayar}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center gap-1 px-3 py-1.5 bg-zinc-700 hover:bg-zinc-600 rounded-lg text-xs font-bold transition"
+                            >
+                              <Printer className="w-3 h-3" /> Cetak
+                            </a>
+                          </div>
                         </td>
                       </tr>
                     ))}
@@ -206,6 +240,64 @@ export default function RiwayatClient() {
               )}
             </>
           )}
+        </div>
+      )}
+
+      {/* Cancel Modal */}
+      {cancelModal.isOpen && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-zinc-900 border border-red-900/50 rounded-2xl w-full max-w-md overflow-hidden shadow-2xl">
+            <div className="p-4 bg-red-950/30 border-b border-red-900/50">
+              <h3 className="font-bold text-red-400 flex items-center gap-2">
+                <AlertTriangle className="w-5 h-5" />
+                Batalkan Bill Lunas
+              </h3>
+            </div>
+            <div className="p-6 space-y-4">
+              <p className="text-sm text-zinc-400">
+                Tindakan ini akan membatalkan status LUNAS dan menandai seluruh bill sebagai BATAL. Uang di kasir (Laporan EOD) akan dikurangi sesuai total bill ini.
+              </p>
+              
+              <div>
+                <label className="text-xs text-zinc-400 uppercase font-bold tracking-wider mb-2 block">Alasan Koreksi / Batal</label>
+                <input 
+                  type="text" 
+                  value={cancelAlasan} 
+                  onChange={e => setCancelAlasan(e.target.value)}
+                  placeholder="Misal: Salah input metode bayar"
+                  className="w-full bg-zinc-800 border border-zinc-700 rounded-lg p-3 text-sm focus:outline-none focus:border-red-500 transition"
+                />
+              </div>
+
+              <div>
+                <label className="text-xs text-zinc-400 uppercase font-bold tracking-wider mb-2 block">PIN Manajer</label>
+                <input 
+                  type="password" 
+                  value={cancelPin} 
+                  onChange={e => setCancelPin(e.target.value)}
+                  placeholder="Masukkan 6 digit PIN"
+                  className="w-full bg-zinc-800 border border-zinc-700 rounded-lg p-3 text-sm focus:outline-none focus:border-red-500 transition"
+                />
+              </div>
+
+              <div className="flex gap-3 pt-4">
+                <button 
+                  onClick={() => setCancelModal({ isOpen: false, billId: '' })}
+                  disabled={canceling}
+                  className="flex-1 px-4 py-3 bg-zinc-800 hover:bg-zinc-700 rounded-lg font-bold transition disabled:opacity-50"
+                >
+                  Tutup
+                </button>
+                <button 
+                  onClick={handleCancelSubmit}
+                  disabled={canceling}
+                  className="flex-1 px-4 py-3 bg-red-600 hover:bg-red-500 text-white rounded-lg font-bold transition disabled:opacity-50 flex items-center justify-center gap-2"
+                >
+                  {canceling ? 'Memproses...' : 'Batalkan Bill'}
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
       )}
     </div>
