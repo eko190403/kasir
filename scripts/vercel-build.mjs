@@ -12,6 +12,7 @@ function runNodeCli(script, ...args) {
 }
 
 if (process.env.VERCEL_ENV === "production") {
+  runNodeCli("node_modules/prisma/build/index.js", "migrate", "resolve", "--rolled-back", "20261008130000_shift_cash_count")
   runNodeCli("node_modules/prisma/build/index.js", "migrate", "deploy")
 }
 
