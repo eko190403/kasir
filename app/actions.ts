@@ -7,7 +7,7 @@ import { redirect } from "next/navigation"
 import { connection } from 'next/server'
 import bcrypt from "bcryptjs"
 import { setSession, logout as clearSession, getSession } from "@/lib/auth"
-import { getStartOfDayWIB, getEndOfDayWIB } from "@/lib/timezone"
+import { getStartOfDayWIB, getEndOfDayWIB, getOperationalBusinessDate } from "@/lib/timezone"
 import { summarizeShiftCash } from "@/lib/shift-cash"
 import { cashSalesForBill } from "@/lib/shift-cash"
 import { nextShiftExpenseTotal, normalizeShiftExpenseInput } from "@/lib/shift-expense"
@@ -115,6 +115,7 @@ export async function createTakeAwayOrder() {
 
   const bill = await prisma.bill.create({
     data: {
+      businessDate: getOperationalBusinessDate(),
       tipe: "TAKE_AWAY",
       status: "TERBUKA",
       kasirId,
@@ -190,6 +191,7 @@ export async function createOrGetActiveBill(sofaId: string) {
 
       bill = await tx.bill.create({
         data: {
+          businessDate: getOperationalBusinessDate(),
           sofaId,
           tipe: "DINE_IN",
           status: "TERBUKA",

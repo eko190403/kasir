@@ -1,6 +1,7 @@
-import { toZonedTime, format } from 'date-fns-tz';
+import { toZonedTime, format, formatInTimeZone } from 'date-fns-tz';
 
 const TIMEZONE = 'Asia/Jakarta';
+const OPERATIONAL_DAY_START_HOUR = 6;
 
 /**
  * Returns the current date/time in WIB (Asia/Jakarta)
@@ -27,6 +28,17 @@ export function getEndOfDayWIB(dateStr?: string | Date): Date {
   const zoned = toZonedTime(date, TIMEZONE);
   zoned.setHours(23, 59, 59, 999);
   return zoned;
+}
+
+export function getOperationalBusinessDate(date: Date = new Date()): Date {
+  const [localDate, localHour] = formatInTimeZone(date, TIMEZONE, 'yyyy-MM-dd HH').split(' ')
+  const businessDate = new Date(`${localDate}T00:00:00.000Z`)
+
+  if (Number(localHour) < OPERATIONAL_DAY_START_HOUR) {
+    businessDate.setUTCDate(businessDate.getUTCDate() - 1)
+  }
+
+  return businessDate
 }
 
 /**

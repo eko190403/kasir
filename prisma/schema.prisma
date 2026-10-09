@@ -56,6 +56,7 @@ enum BillStatus {
 
 model Bill {
   id           String     @id @default(uuid())
+  businessDate DateTime   @db.Date
   nomorBill    Int?       // Auto-increment per hari, e.g. 1, 2, 3...
   tipe         BillTipe
   sofaId       String?

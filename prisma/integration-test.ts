@@ -6,6 +6,7 @@
 
 import { PrismaClient } from '@prisma/client'
 import { computeBillMathematics } from '../lib/bill'
+import { getOperationalBusinessDate } from '../lib/timezone'
 
 const prisma = new PrismaClient()
 
@@ -95,6 +96,7 @@ async function testBillCreation() {
   // Create a test bill
   const bill = await prisma.bill.create({
     data: {
+      businessDate: getOperationalBusinessDate(),
       tipe: 'DINE_IN',
       sofaId: sofa.id,
       status: 'TERBUKA',
@@ -321,6 +323,7 @@ async function testCancelBill() {
   // Create separate bill for cancel test
   const bill = await prisma.bill.create({
     data: {
+      businessDate: getOperationalBusinessDate(),
       tipe: 'TAKE_AWAY',
       status: 'TERBUKA',
       metodeBayar: TEST_PREFIX,
