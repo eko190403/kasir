@@ -10,7 +10,10 @@ export default async function OpenOrderPage() {
   await connection()
   await cleanupEmptyBills()
   const openBills = await prisma.bill.findMany({
-    where: { status: 'TERBUKA' },
+    where: {
+      status: 'TERBUKA',
+      billItems: { some: {} },
+    },
     include: {
       sofa: true,
       billItems: true,
