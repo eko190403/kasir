@@ -77,21 +77,23 @@ npm run dev
 
 Buka `http://localhost:3000`.
 
-## Migrasi database production
+## Migrasi database
 
-Build Vercel menjalankan `prisma migrate deploy` sebelum build aplikasi. Untuk database production yang sudah berisi data tetapi belum memiliki riwayat Prisma Migrate:
+Build Production Vercel menjalankan `prisma migrate deploy` sebelum build aplikasi. Build Preview tidak menjalankan migrasi.
+
+Untuk database production yang sudah berisi data tetapi belum memiliki riwayat Prisma Migrate:
 
 1. Buat backup database dan pastikan skema yang sedang berjalan cocok dengan `prisma/schema.prisma`.
-2. Tandai baseline sebagai sudah diterapkan tanpa menjalankan SQL pembuat tabel:
+2. Sebelum deploy production pertama, tandai baseline sebagai sudah diterapkan tanpa menjalankan SQL pembuat tabel:
 
 ```bash
 npx prisma migrate resolve --applied 20261008000000_baseline_existing_schema
 ```
 
-3. Jalankan `npm run db:migrate` sekali terhadap database production untuk menambahkan kolom kas fisik, lalu deploy aplikasi.
-4. Pastikan `DATABASE_URL` dan `DIRECT_URL` tersedia untuk build production di Vercel.
+3. Pastikan `DATABASE_URL` dan `DIRECT_URL` tersedia sebagai production environment variables di Vercel. Nilainya tidak perlu diunduh ke lokal.
+4. Deploy ke production. Build akan menerapkan migrasi kas fisik yang hanya menambahkan kolom nullable.
 
-Jangan tandai baseline sebagai applied jika database kosong atau skemanya berbeda. Untuk database baru, jalankan `npm run db:migrate` tanpa langkah baseline; migrasi akan membuat skema dan menerapkan perubahan kas. Setiap database Preview yang sudah berisi tabel juga perlu dibaseline sebelum build Vercel menjalankan migrasi.
+Jangan tandai baseline sebagai applied jika database kosong atau skemanya berbeda. Untuk database baru, deploy production akan menerapkan baseline dan migrasi kas secara berurutan. Untuk migrasi manual, jalankan `npm run db:migrate` dengan `DATABASE_URL` dan `DIRECT_URL` yang sesuai.
 
 ## Konfigurasi environment
 
