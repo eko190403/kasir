@@ -151,6 +151,16 @@ export async function getKitchenItems(kategori: "MAKANAN" | "MINUMAN") {
 
 
 export async function createOrGetActiveBill(sofaId: string) {
+  const session = await getSession()
+  const kasirId = session?.user?.id
+  const [shift, pajakSetting, serviceSetting] = await Promise.all([
+    kasirId
+      ? prisma.shift.findFirst({ where: { kasirId, waktuTutup: null } })
+      : Promise.resolve(null),
+    prisma.setting.findUnique({ where: { kunci: 'PAJAK' } }),
+    prisma.setting.findUnique({ where: { kunci: 'SERVICE_CHARGE' } }),
+  ])
+
   return await prisma.$transaction(async (tx) => {
     const sofa = await tx.sofa.findUnique({ where: { id: sofaId } })
     if (!sofa || sofa.isDeleted) {
@@ -163,29 +173,9 @@ export async function createOrGetActiveBill(sofaId: string) {
     })
 
     if (!bill) {
-      const orphanOpenBills = await tx.bill.count({
-        where: { sofaId, status: 'TERBUKA' }
-      })
-
-      if (orphanOpenBills > 0) {
-        throw new Error('Meja ini sudah memiliki tagihan aktif.')
-      }
-
-      const session = await getSession()
-      const kasirId = session ? session.user.id : undefined
-      let shiftId = undefined
-      
-      if (kasirId) {
-        const shift = await tx.shift.findFirst({ where: { kasirId, waktuTutup: null } })
-        if (shift) shiftId = shift.id
-      }
-
       const todayStart = getStartOfDayWIB()
       const todayCount = await tx.bill.count({ where: { waktuBuka: { gte: todayStart } } })
       const nomorBill = todayCount + 1
-
-      const pajakSetting = await tx.setting.findUnique({ where: { kunci: 'PAJAK' } })
-      const serviceSetting = await tx.setting.findUnique({ where: { kunci: 'SERVICE_CHARGE' } })
       const pajakPct = parseInt(pajakSetting?.nilai || '10')
       const servicePct = parseInt(serviceSetting?.nilai || '5')
 
@@ -196,7 +186,7 @@ export async function createOrGetActiveBill(sofaId: string) {
           tipe: "DINE_IN",
           status: "TERBUKA",
           kasirId,
-          shiftId,
+          shiftId: shift?.id,
           nomorBill,
           pajakPct,
           servicePct
@@ -213,7 +203,7 @@ export async function createOrGetActiveBill(sofaId: string) {
     }
 
     return bill
-  }, { isolationLevel: 'Serializable' })
+  }, { isolationLevel: 'Serializable', maxWait: 10_000, timeout: 10_000 })
 }
 
 export async function cleanupEmptyBills() {
