@@ -1,34 +1,56 @@
 "use client"
 
-import { useEffect, useState, useRef } from "react"
+import { useCallback, useEffect, useState, useRef } from "react"
 import { supabase } from "@/lib/supabaseClient"
 import { updateItemStatus, getKitchenItems } from "@/app/actions"
 import { toast } from "sonner"
 import { RefreshCw, ChefHat, GlassWater, Clock } from "lucide-react"
 import KitchenSoundAlert from "@/components/KitchenSoundAlert"
 
+type KitchenItem = Awaited<ReturnType<typeof getKitchenItems>>[number]
+
 export default function RealtimeBoard({
   kategori,
   initialItems
 }: {
   kategori: "MAKANAN" | "MINUMAN",
-  initialItems: any[]
+  initialItems: KitchenItem[]
 }) {
-  const [items, setItems] = useState<any[]>(initialItems)
+  const [items, setItems] = useState<KitchenItem[]>(initialItems)
   const [lastRefresh, setLastRefresh] = useState(new Date())
   const [connected, setConnected] = useState(false)
-  const prevCountRef = useRef<number>(initialItems.length)
+  const [refreshFailed, setRefreshFailed] = useState(false)
+  const connectedRef = useRef(false)
+  const fetchingRef = useRef(false)
+  const refreshQueuedRef = useRef(false)
+  const fetchFreshRef = useRef<() => Promise<void>>(async () => {})
 
-  const fetchFresh = async () => {
+  const fetchFresh = useCallback(async () => {
+    if (fetchingRef.current) {
+      refreshQueuedRef.current = true
+      return
+    }
+
+    fetchingRef.current = true
     try {
       const fresh = await getKitchenItems(kategori)
       setItems(fresh)
       setLastRefresh(new Date())
-    } catch { /* silent */ }
-  }
+      setRefreshFailed(false)
+    } catch {
+      setRefreshFailed(true)
+    } finally {
+      fetchingRef.current = false
+      if (refreshQueuedRef.current) {
+        refreshQueuedRef.current = false
+        void fetchFreshRef.current()
+      }
+    }
+  }, [kategori])
 
   // Supabase Realtime — replace polling entirely
   useEffect(() => {
+    fetchFreshRef.current = fetchFresh
     const channel = supabase
       .channel(`kitchen-${kategori}-v2`)
       .on(
@@ -48,19 +70,22 @@ export default function RealtimeBoard({
         }
       )
       .subscribe((status) => {
-        setConnected(status === 'SUBSCRIBED')
+        const isConnected = status === 'SUBSCRIBED'
+        connectedRef.current = isConnected
+        setConnected(isConnected)
       })
 
     // Fallback: re-fetch every 5s if realtime disconnects
     const fallback = setInterval(() => {
-      if (!connected) fetchFresh()
+      if (!connectedRef.current) void fetchFresh()
     }, 5000)
 
     return () => {
+      connectedRef.current = false
       supabase.removeChannel(channel)
       clearInterval(fallback)
     }
-  }, [kategori])
+  }, [kategori, fetchFresh])
 
   const activeItems = items.filter(i => i.status !== "SIAP")
 
@@ -71,7 +96,7 @@ export default function RealtimeBoard({
       await updateItemStatus(id, newStatus)
       if (newStatus === "DIPROSES") toast.warning(`Sedang diproses: ${namaItem}`)
       if (newStatus === "SIAP") toast.success(`Siap diantar: ${namaItem}!`)
-    } catch (err) {
+    } catch {
       toast.error("Gagal mengupdate status, coba lagi.")
       setItems(current => current.map(i => i.id === id ? { ...i, status: "DIKIRIM" } : i))
     }
@@ -100,6 +125,11 @@ export default function RealtimeBoard({
           </button>
         </div>
       </div>
+      {refreshFailed && (
+        <p role="alert" className="mb-4 text-sm text-amber-400">
+          Gagal memuat pesanan terbaru. Periksa koneksi lalu tekan Refresh.
+        </p>
+      )}
 
       <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-4">
         {activeItems.length === 0 ? (
