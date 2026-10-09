@@ -1,6 +1,7 @@
 "use server"
 
 import { prisma } from "@/lib/prisma"
+import { Prisma } from "@prisma/client"
 import { calculateBillTotal } from "@/lib/bill"
 import { revalidatePath } from "next/cache"
 import { redirect } from "next/navigation"
@@ -161,49 +162,58 @@ export async function createOrGetActiveBill(sofaId: string) {
     prisma.setting.findUnique({ where: { kunci: 'SERVICE_CHARGE' } }),
   ])
 
-  return await prisma.$transaction(async (tx) => {
-    const sofa = await tx.sofa.findUnique({ where: { id: sofaId } })
-    if (!sofa || sofa.isDeleted) {
-      throw new Error('Meja tidak ditemukan atau tidak aktif.')
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return await prisma.$transaction(async (tx) => {
+        const sofa = await tx.sofa.findUnique({ where: { id: sofaId } })
+        if (!sofa || sofa.isDeleted) {
+          throw new Error('Meja tidak ditemukan atau tidak aktif.')
+        }
+
+        let bill = await tx.bill.findFirst({
+          where: { sofaId, status: "TERBUKA" },
+          include: { billItems: true }
+        })
+
+        if (!bill) {
+          const todayStart = getStartOfDayWIB()
+          const todayCount = await tx.bill.count({ where: { waktuBuka: { gte: todayStart } } })
+          const nomorBill = todayCount + 1
+          const pajakPct = parseInt(pajakSetting?.nilai || '10')
+          const servicePct = parseInt(serviceSetting?.nilai || '5')
+
+          bill = await tx.bill.create({
+            data: {
+              businessDate: getOperationalBusinessDate(),
+              sofaId,
+              tipe: "DINE_IN",
+              status: "TERBUKA",
+              kasirId,
+              shiftId: shift?.id,
+              nomorBill,
+              pajakPct,
+              servicePct
+            },
+            include: { billItems: true }
+          })
+        }
+
+        if (sofa.status !== 'TERISI' && sofa.status !== 'MENUNGGU_MAKANAN' && sofa.status !== 'SIAP_BAYAR') {
+          await tx.sofa.update({
+            where: { id: sofaId },
+            data: { status: 'TERISI' }
+          })
+        }
+
+        return bill
+      }, { isolationLevel: 'Serializable', maxWait: 10_000, timeout: 10_000 })
+    } catch (error) {
+      if (!(error instanceof Prisma.PrismaClientKnownRequestError) || error.code !== 'P2034' || attempt >= 2) {
+        throw error
+      }
+      await new Promise((resolve) => setTimeout(resolve, 100 * (attempt + 1)))
     }
-
-    let bill = await tx.bill.findFirst({
-      where: { sofaId, status: "TERBUKA" },
-      include: { billItems: true }
-    })
-
-    if (!bill) {
-      const todayStart = getStartOfDayWIB()
-      const todayCount = await tx.bill.count({ where: { waktuBuka: { gte: todayStart } } })
-      const nomorBill = todayCount + 1
-      const pajakPct = parseInt(pajakSetting?.nilai || '10')
-      const servicePct = parseInt(serviceSetting?.nilai || '5')
-
-      bill = await tx.bill.create({
-        data: {
-          businessDate: getOperationalBusinessDate(),
-          sofaId,
-          tipe: "DINE_IN",
-          status: "TERBUKA",
-          kasirId,
-          shiftId: shift?.id,
-          nomorBill,
-          pajakPct,
-          servicePct
-        },
-        include: { billItems: true }
-      })
-    }
-
-    if (sofa.status !== 'TERISI' && sofa.status !== 'MENUNGGU_MAKANAN' && sofa.status !== 'SIAP_BAYAR') {
-      await tx.sofa.update({
-        where: { id: sofaId },
-        data: { status: 'TERISI' }
-      })
-    }
-
-    return bill
-  }, { isolationLevel: 'Serializable', maxWait: 10_000, timeout: 10_000 })
+  }
 }
 
 export async function cleanupEmptyBills() {
