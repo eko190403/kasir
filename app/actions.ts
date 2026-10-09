@@ -167,7 +167,7 @@ export async function createOrGetActiveBill(
         data: { status: "TERISI" }
       })
     }
-    return activeBill
+    return { bill: activeBill, sofaStatus: sofaStatus === "KOSONG" ? "TERISI" as const : sofaStatus }
   }
 
   const session = await getSession()
@@ -223,7 +223,10 @@ export async function createOrGetActiveBill(
           })
         }
 
-        return bill
+        return {
+          bill,
+          sofaStatus: sofa.status === "KOSONG" ? "TERISI" as const : sofa.status
+        }
       }, { isolationLevel: 'Serializable', maxWait: 10_000, timeout: 10_000 })
     } catch (error) {
       if (!(error instanceof Prisma.PrismaClientKnownRequestError) || error.code !== 'P2034' || attempt >= 2) {
@@ -847,7 +850,10 @@ export async function setSofaStatus(sofaId: string, status: "KOSONG" | "TERISI" 
       select: { id: true }
     })
     if (activeBill) {
-      throw new Error('Meja masih memiliki bill terbuka. Selesaikan atau batalkan bill terlebih dahulu.')
+      return {
+        success: false as const,
+        message: 'Meja masih memiliki bill terbuka. Selesaikan atau batalkan bill terlebih dahulu.'
+      }
     }
   }
 
@@ -858,6 +864,7 @@ export async function setSofaStatus(sofaId: string, status: "KOSONG" | "TERISI" 
   revalidatePath(`/`)
   revalidatePath(`/dine-in`)
   revalidatePath(`/sofa/${sofaId}`)
+  return { success: true as const }
 }
 
 export async function openShift(kasirId: string, kasAwal: number) {

@@ -4,13 +4,27 @@ import { setSofaStatus } from "@/app/actions"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
 
-export default function SofaStatusToggle({ sofaId, currentStatus }: { sofaId: string, currentStatus: string }) {
+type SofaStatus = "KOSONG" | "TERISI" | "MENUNGGU_MAKANAN" | "SIAP_BAYAR"
+
+export default function SofaStatusToggle({
+  sofaId,
+  currentStatus,
+  hasActiveBill
+}: {
+  sofaId: string
+  currentStatus: SofaStatus
+  hasActiveBill: boolean
+}) {
   const router = useRouter()
   
   const handleStatusChange = async (e: React.ChangeEvent<HTMLSelectElement>) => {
-    const newStatus = e.target.value as any
+    const newStatus = e.target.value as SofaStatus
     try {
-      await setSofaStatus(sofaId, newStatus)
+      const result = await setSofaStatus(sofaId, newStatus)
+      if (!result.success) {
+        toast.warning(result.message)
+        return
+      }
       router.refresh()
     } catch (err: any) {
       toast.error(err.message)
@@ -25,11 +39,12 @@ export default function SofaStatusToggle({ sofaId, currentStatus }: { sofaId: st
         onChange={handleStatusChange}
         className="bg-zinc-800 border border-zinc-700 rounded p-1 text-xs font-bold text-white focus:outline-none focus:border-emerald-500"
       >
-        <option value="KOSONG">KOSONG</option>
+        <option value="KOSONG" disabled={hasActiveBill}>KOSONG</option>
         <option value="TERISI">TERISI</option>
         <option value="MENUNGGU_MAKANAN">MENUNGGU MAKANAN</option>
         <option value="SIAP_BAYAR">SIAP BAYAR</option>
       </select>
+      {hasActiveBill && <span className="text-xs text-amber-400">Selesaikan bill terbuka untuk mengosongkan meja.</span>}
     </div>
   )
 }

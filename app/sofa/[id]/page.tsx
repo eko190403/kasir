@@ -25,7 +25,7 @@ export default async function SofaPage({ params }: { params: Promise<{ id: strin
   }
 
   // Ensure there is an active bill for this sofa (New Order / Open Order)
-  const bill = await createOrGetActiveBill(sofa.id, sofa.status)
+  const { bill, sofaStatus } = await createOrGetActiveBill(sofa.id, sofa.status)
 
   return (
     <main className="container mx-auto p-4 space-y-6">
@@ -33,7 +33,11 @@ export default async function SofaPage({ params }: { params: Promise<{ id: strin
         <div>
           <h1 className="text-3xl font-bold">{sofa.nama}</h1>
           <p className="text-zinc-400 text-sm mt-1 mb-2">Kapasitas: {sofa.kapasitas} Orang</p>
-          <SofaStatusToggle sofaId={sofa.id} currentStatus={sofa.status} />
+          <SofaStatusToggle
+            sofaId={sofa.id}
+            currentStatus={sofaStatus}
+            hasActiveBill={bill.status === "TERBUKA"}
+          />
         </div>
         <div className="flex gap-2 items-center">
           <PindahSofaButton billId={bill.id} currentSofaId={sofa.id} sofas={allSofas} />
