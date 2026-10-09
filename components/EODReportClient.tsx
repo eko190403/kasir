@@ -79,7 +79,7 @@ export default function EODReportClient() {
             </div>
           </div>
 
-          <div className={`rounded-2xl border p-6 ${report.cashStatus === 'SESUAI' ? 'border-emerald-800/60 bg-emerald-950/20' : report.cashStatus === 'WASPADA' ? 'border-amber-800/60 bg-amber-950/20' : 'border-red-800/60 bg-red-950/20'}`}>
+          <div className={`rounded-2xl border p-6 ${report.cashStatus === 'SESUAI' ? 'border-emerald-800/60 bg-emerald-950/20' : report.cashStatus === 'WASPADA' ? 'border-amber-800/60 bg-amber-950/20' : report.cashStatus === 'BELUM_DIHITUNG' ? 'border-zinc-700 bg-zinc-900' : 'border-red-800/60 bg-red-950/20'}`}>
             <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
               <div>
                 <p className="text-xs uppercase tracking-[0.18em] text-zinc-300">Status Rekonsiliasi Kas</p>
@@ -93,16 +93,16 @@ export default function EODReportClient() {
             <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-3">
               <div className="rounded-xl border border-zinc-800 bg-zinc-950/40 p-3">
                 <div className="text-[10px] uppercase tracking-[0.14em] text-zinc-400">Kas Akhir Aktual</div>
-                <div className="mt-2 text-xl font-black text-white">{fmt(report.actualClosingCash)}</div>
+                <div className="mt-2 text-xl font-black text-white">{report.cashDifference === null ? 'Belum lengkap' : fmt(report.actualClosingCash)}</div>
               </div>
               <div className="rounded-xl border border-zinc-800 bg-zinc-950/40 p-3">
                 <div className="text-[10px] uppercase tracking-[0.14em] text-zinc-400">Kas Diharapkan</div>
                 <div className="mt-2 text-xl font-black text-white">{fmt(report.expectedCash)}</div>
               </div>
-              <div className={`rounded-xl border p-3 ${report.cashDifference >= 0 ? 'border-emerald-700/50 bg-emerald-950/20' : 'border-red-700/50 bg-red-950/20'}`}>
+              <div className={`rounded-xl border p-3 ${report.cashDifference === null ? 'border-zinc-700 bg-zinc-900' : report.cashDifference >= 0 ? 'border-emerald-700/50 bg-emerald-950/20' : 'border-red-700/50 bg-red-950/20'}`}>
                 <div className="text-[10px] uppercase tracking-[0.14em] text-zinc-300">Selisih</div>
-                <div className={`mt-2 text-xl font-black ${report.cashDifference >= 0 ? 'text-emerald-300' : 'text-red-300'}`}>
-                  {report.cashDifference >= 0 ? `+ ${fmt(report.cashDifference)}` : `- ${fmt(Math.abs(report.cashDifference))}`}
+                <div className={`mt-2 text-xl font-black ${report.cashDifference === null ? 'text-zinc-400' : report.cashDifference >= 0 ? 'text-emerald-300' : 'text-red-300'}`}>
+                  {report.cashDifference === null ? 'Belum dihitung' : report.cashDifference >= 0 ? `+ ${fmt(report.cashDifference)}` : `- ${fmt(Math.abs(report.cashDifference))}`}
                 </div>
               </div>
             </div>
@@ -150,16 +150,16 @@ export default function EODReportClient() {
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
               <div className="bg-zinc-800 rounded-xl p-4">
                 <div className="text-zinc-400 text-xs uppercase">Kas Akhir Aktual</div>
-                <div className="mt-2 text-xl font-black text-emerald-400">{fmt(report.actualClosingCash)}</div>
+                <div className="mt-2 text-xl font-black text-emerald-400">{report.cashDifference === null ? 'Belum lengkap' : fmt(report.actualClosingCash)}</div>
               </div>
               <div className="bg-zinc-800 rounded-xl p-4">
                 <div className="text-zinc-400 text-xs uppercase">Kas Diharapkan</div>
                 <div className="mt-2 text-xl font-black text-blue-400">{fmt(report.expectedCash)}</div>
               </div>
-              <div className={`rounded-xl p-4 ${report.cashDifference >= 0 ? 'bg-emerald-950/40 border border-emerald-500/30' : 'bg-red-950/40 border border-red-500/30'}`}>
+              <div className={`rounded-xl p-4 ${report.cashDifference === null ? 'bg-zinc-800' : report.cashDifference >= 0 ? 'bg-emerald-950/40 border border-emerald-500/30' : 'bg-red-950/40 border border-red-500/30'}`}>
                 <div className="text-zinc-300 text-xs uppercase">Selisih</div>
-                <div className={`mt-2 text-xl font-black ${report.cashDifference >= 0 ? 'text-emerald-300' : 'text-red-300'}`}>
-                  {report.cashDifference >= 0 ? `+ ${fmt(report.cashDifference)}` : `- ${fmt(Math.abs(report.cashDifference))}`}
+                <div className={`mt-2 text-xl font-black ${report.cashDifference === null ? 'text-zinc-400' : report.cashDifference >= 0 ? 'text-emerald-300' : 'text-red-300'}`}>
+                  {report.cashDifference === null ? 'Belum dihitung' : report.cashDifference >= 0 ? `+ ${fmt(report.cashDifference)}` : `- ${fmt(Math.abs(report.cashDifference))}`}
                 </div>
               </div>
             </div>
@@ -196,7 +196,8 @@ export default function EODReportClient() {
                       <th className="text-right pb-2">Kas Awal</th>
                       <th className="text-right pb-2">Penjualan</th>
                       <th className="text-right pb-2">Kas Keluar</th>
-                      <th className="text-right pb-2">Kas Akhir</th>
+                      <th className="text-right pb-2">Kas Fisik</th>
+                      <th className="text-right pb-2">Selisih</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-zinc-800">
@@ -208,7 +209,10 @@ export default function EODReportClient() {
                         <td className="py-2 text-right">{fmt(s.kasAwal)}</td>
                         <td className="py-2 text-right text-emerald-400">{fmt(s.totalPenjualan || 0)}</td>
                         <td className="py-2 text-right text-red-400">{fmt(s.pengeluaran)}</td>
-                        <td className="py-2 text-right font-bold">{fmt(s.kasAkhir || 0)}</td>
+                        <td className="py-2 text-right font-bold">{s.kasHitung == null ? 'Belum dihitung' : fmt(s.kasHitung)}</td>
+                        <td className={`py-2 text-right font-bold ${s.selisih == null ? 'text-zinc-500' : s.selisih === 0 ? 'text-emerald-400' : 'text-amber-400'}`}>
+                          {s.selisih == null ? 'Belum dihitung' : `${s.selisih > 0 ? '+' : ''}${fmt(s.selisih)}`}
+                        </td>
                       </tr>
                     ))}
                   </tbody>

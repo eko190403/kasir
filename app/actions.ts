@@ -8,6 +8,8 @@ import { connection } from 'next/server'
 import bcrypt from "bcryptjs"
 import { setSession, logout as clearSession, getSession } from "@/lib/auth"
 import { getStartOfDayWIB, getEndOfDayWIB } from "@/lib/timezone"
+import { summarizeShiftCash } from "@/lib/shift-cash"
+import { cashSalesForBill } from "@/lib/shift-cash"
 
 // ─── Auth Helpers ───────────────────────────────────────────────────
 const ROLE_ORDER = ["PELAYAN", "BARTENDER", "DAPUR", "KASIR", "MANAJER"] as const
@@ -819,50 +821,73 @@ export async function openShift(kasirId: string, kasAwal: number) {
   return shift
 }
 
-export async function closeShift(shiftId: string, pin?: string) {
+export async function closeShift(shiftId: string, kasHitung: number, pin?: string) {
   const session = await requireSession()
   await requireManager(pin)
-
-  const shift = await prisma.shift.findUnique({ where: { id: shiftId } })
-  if (!shift) throw new Error('Shift not found')
-
-  const openBills = await prisma.bill.count({
-    where: { shiftId, status: 'TERBUKA' }
-  })
-
-  if (openBills > 0) {
-    throw new Error(`Tidak bisa tutup shift. Masih ada ${openBills} tagihan yang belum lunas/ditutup.`)
+  if (!Number.isSafeInteger(kasHitung) || kasHitung < 0) {
+    throw new Error("Kas fisik harus berupa rupiah bulat dan tidak negatif.")
   }
 
-  const bills = await prisma.bill.findMany({
-    where: {
-      status: 'LUNAS',
-      shiftId,
-      waktuTutup: { gte: shift.waktuBuka }
-    }
-  })
-  const totalPenjualan = bills.reduce((acc, b) => acc + b.total, 0)
-  const kasAkhir = shift.kasAwal + totalPenjualan - shift.pengeluaran
+  await prisma.$transaction(async (tx) => {
+    const shift = await tx.shift.findUnique({ where: { id: shiftId } })
+    if (!shift) throw new Error('Shift tidak ditemukan.')
+    if (shift.waktuTutup) throw new Error('Shift ini sudah ditutup.')
 
-  await prisma.shift.update({
-    where: { id: shiftId },
-    data: {
-      waktuTutup: new Date(),
-      kasAkhir,
-      totalPenjualan
+    const openBills = await tx.bill.count({
+      where: { shiftId, status: 'TERBUKA' }
+    })
+    if (openBills > 0) {
+      throw new Error(`Tidak bisa tutup shift. Masih ada ${openBills} tagihan yang belum lunas/ditutup.`)
     }
-  })
 
-  await prisma.auditLog.create({
-    data: {
-      userId: session.user.id,
-      aksi: 'CLOSE_SHIFT',
-      entitas: 'Shift',
-      detail: JSON.stringify({ shiftId, kasAkhir, totalPenjualan, otorisasi: session.user.nama })
-    }
-  })
+    const bills = await tx.bill.findMany({
+      where: {
+        status: 'LUNAS',
+        shiftId,
+        waktuTutup: { gte: shift.waktuBuka }
+      }
+    })
+    const totalPenjualan = bills.reduce((acc, bill) => acc + bill.total, 0)
+    const penjualanTunai = bills.reduce((sum, bill) => sum + cashSalesForBill(bill), 0)
+    const expectedCash = shift.kasAwal + penjualanTunai - shift.pengeluaran
+    const selisih = kasHitung - expectedCash
 
-  revalidatePath(`/shift`)
+    const updated = await tx.shift.updateMany({
+      where: { id: shiftId, waktuTutup: null },
+      data: {
+        waktuTutup: new Date(),
+        kasAkhir: kasHitung,
+        kasHitung,
+        selisih,
+        totalPenjualan
+      }
+    })
+    if (updated.count === 0) throw new Error('Shift sudah ditutup oleh proses lain.')
+
+    await tx.auditLog.create({
+      data: {
+        userId: session.user.id,
+        aksi: 'CLOSE_SHIFT',
+        entitas: 'Shift',
+        detail: JSON.stringify({
+          shiftId,
+          kasAwal: shift.kasAwal,
+          totalPenjualan,
+          penjualanTunai,
+          pengeluaran: shift.pengeluaran,
+          kasHitung,
+          expectedCash,
+          selisih,
+          otorisasi: session.user.nama
+        })
+      }
+    })
+  }, { isolationLevel: "Serializable" })
+
+  revalidatePath('/shift')
+  revalidatePath('/summary')
+  revalidatePath('/print/eod')
+  revalidatePath('/eod-report')
 }
 
 export async function catatPengeluaran(shiftId: string, jumlah: number, catatan: string, pin?: string) {
@@ -1149,7 +1174,10 @@ export async function getEndOfDayReport(tanggal: string) {
     }),
     prisma.shift.findMany({
       where: { waktuBuka: { gte: start, lte: end } },
-      include: { kasir: true }
+      include: {
+        kasir: true,
+        bills: { where: { status: 'LUNAS' } }
+      }
     }),
     prisma.auditLog.findMany({
       where: { waktu: { gte: start, lte: end } },
@@ -1169,29 +1197,29 @@ export async function getEndOfDayReport(tanggal: string) {
   const openingCash = shifts.reduce((s, shift) => s + (shift.kasAwal || 0), 0)
   const expenseCash = shifts.reduce((s, shift) => s + (shift.pengeluaran || 0), 0)
 
-  const normalizeMethodKey = (method?: string | null) => {
-    const raw = (method ?? 'TUNAI').trim().toUpperCase()
-    if (!raw) return 'TUNAI'
-    if (raw.startsWith('SPLIT')) return 'SPLIT'
-    return raw
-  }
-
-  const cashSales = bills
-    .filter((bill) => ['TUNAI', 'CASH'].includes(normalizeMethodKey(bill.metodeBayar)))
-    .reduce((s, bill) => s + bill.total, 0)
-  const nonCashSales = bills
-    .filter((bill) => !['TUNAI', 'CASH'].includes(normalizeMethodKey(bill.metodeBayar)))
-    .reduce((s, bill) => s + bill.total, 0)
-  const expectedCash = openingCash + cashSales - expenseCash
-  const actualClosingCash = shifts.reduce((s, shift) => s + (shift.kasAkhir ?? (shift.kasAwal + (shift.totalPenjualan || 0) - (shift.pengeluaran || 0))), 0)
-  const cashDifference = actualClosingCash - expectedCash
+  const shiftCashSummary = summarizeShiftCash(shifts)
+  const shiftSales = shifts.reduce(
+    (sum, shift) => sum + shift.bills.reduce((billSum, bill) => billSum + bill.total, 0),
+    0
+  )
+  const cashSales = shiftCashSummary.cashSales
+  const nonCashSales = shiftSales - cashSales
+  const expectedCash = shiftCashSummary.expectedCash
+  const actualClosingCash = shiftCashSummary.actualClosingCash
+  const cashDifference = shiftCashSummary.cashDifference
   const cashTolerance = 50000
-  const cashStatus = Math.abs(cashDifference) <= cashTolerance ? 'SESUAI' : Math.abs(cashDifference) <= cashTolerance * 2 ? 'WASPADA' : 'KRITIS'
-  const cashStatusMessage = Math.abs(cashDifference) <= cashTolerance
-    ? 'Rekonsiliasi kas sesuai toleransi yang diizinkan.'
-    : Math.abs(cashDifference) <= cashTolerance * 2
-      ? 'Ada selisih kas yang perlu diperiksa lebih lanjut.'
-      : 'Selisih kas melebihi toleransi dan memerlukan review manajer.'
+  const cashStatus = cashDifference === null
+    ? 'BELUM_DIHITUNG'
+    : Math.abs(cashDifference) <= cashTolerance
+      ? 'SESUAI'
+      : Math.abs(cashDifference) <= cashTolerance * 2 ? 'WASPADA' : 'KRITIS'
+  const cashStatusMessage = cashDifference === null
+    ? 'Rekonsiliasi menunggu semua shift ditutup dan kas fisik dihitung.'
+    : Math.abs(cashDifference) <= cashTolerance
+      ? 'Rekonsiliasi kas sesuai toleransi yang diizinkan.'
+      : Math.abs(cashDifference) <= cashTolerance * 2
+        ? 'Ada selisih kas yang perlu diperiksa lebih lanjut.'
+        : 'Selisih kas melebihi toleransi dan memerlukan review manajer.'
 
   const byMetode: Record<string, { count: number; total: number }> = {}
   for (const bill of bills) {
@@ -1239,7 +1267,7 @@ export async function getEndOfDayReport(tanggal: string) {
     compItems,
     byMetode,
     bySofa,
-    shifts,
+    shifts: shifts.map(({ bills: _bills, ...shift }) => shift),
     auditLogs
   }
 }

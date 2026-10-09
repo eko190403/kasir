@@ -132,6 +132,8 @@ model Shift {
   waktuTutup     DateTime?
   kasAwal        Int
   kasAkhir       Int?
+  kasHitung      Int?
+  selisih        Int?
   pengeluaran    Int      @default(0)
   catatanPengeluaran String?
   totalPenjualan Int?

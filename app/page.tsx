@@ -4,6 +4,7 @@ import { createTakeAwayOrder } from "./actions"
 import { prisma } from "@/lib/prisma"
 import { getStartOfDayWIB, getEndOfDayWIB } from "@/lib/timezone"
 import { Utensils, ShoppingBag, Calendar, ListTodo, BookOpen, PieChart, Wallet, ChefHat, Wine, Users, Settings, Sparkles } from "lucide-react"
+import { cashSalesForBill } from "@/lib/shift-cash"
 
 export const instant = false
 
@@ -18,8 +19,7 @@ export default async function Home() {
       where: { status: "LUNAS", waktuTutup: { gte: todayStart, lte: todayEnd } },
       select: {
         total: true,
-        metodeBayar: true,
-        payments: { select: { metode: true, jumlah: true } }
+        metodeBayar: true
       }
     }),
     prisma.bill.count({
@@ -32,9 +32,7 @@ export default async function Home() {
 
   const todayRevenue = todayBills.reduce((sum, bill) => sum + bill.total, 0)
   const avgTicket = todayBills.length ? todayRevenue / todayBills.length : 0
-  const cashSales = todayBills
-    .filter((bill) => ["TUNAI", "CASH"].includes((bill.metodeBayar ?? "TUNAI").trim().toUpperCase()))
-    .reduce((sum, bill) => sum + bill.total, 0)
+  const cashSales = todayBills.reduce((sum, bill) => sum + cashSalesForBill(bill), 0)
   const money = (value: number) => new Intl.NumberFormat("id-ID", {
     style: "currency",
     currency: "IDR",

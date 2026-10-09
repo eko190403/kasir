@@ -4,14 +4,25 @@ import { useState } from "react"
 import { openShift, closeShift, catatPengeluaran } from "@/app/actions"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
+import type { Shift, User } from "@prisma/client"
 
-export default function ShiftClient({ shifts, users }: { shifts: any[], users: any[] }) {
+type ShiftWithCashier = Shift & { kasir: User | null }
+
+function getErrorMessage(error: unknown, fallback: string) {
+  return error instanceof Error ? error.message : fallback
+}
+
+export default function ShiftClient({ shifts, users }: {
+  shifts: ShiftWithCashier[]
+  users: Pick<User, "id" | "nama" | "peran">[]
+}) {
   const router = useRouter()
   const [showForm, setShowForm] = useState(false)
   const [loading, setLoading] = useState(false)
   const [kasirId, setKasirId] = useState('')
   const [kasAwal, setKasAwal] = useState(0)
   const [shiftPin, setShiftPin] = useState('')
+  const [kasHitung, setKasHitung] = useState('')
   const [pendingCloseId, setPendingCloseId] = useState<string | null>(null)
 
   const handleOpen = async () => {
@@ -24,8 +35,8 @@ export default function ShiftClient({ shifts, users }: { shifts: any[], users: a
       setKasirId('')
       setKasAwal(0)
       router.refresh()
-    } catch (err: any) {
-      toast.error(err.message)
+    } catch (err: unknown) {
+      toast.error(getErrorMessage(err, "Gagal membuka shift."))
     } finally {
       setLoading(false)
     }
@@ -34,19 +45,32 @@ export default function ShiftClient({ shifts, users }: { shifts: any[], users: a
   const handleClose = async (shiftId: string) => {
     setPendingCloseId(shiftId)
     setShiftPin('')
+    setKasHitung('')
   }
 
   const confirmCloseShift = async () => {
     if (!pendingCloseId) return
+    if (kasHitung.trim() === "") {
+      toast.warning("Masukkan jumlah kas fisik setelah menghitung uang di laci.")
+      return
+    }
+
+    const countedCash = Number(kasHitung)
+    if (!Number.isSafeInteger(countedCash) || countedCash < 0) {
+      toast.warning("Masukkan kas fisik berupa rupiah bulat dan tidak negatif.")
+      return
+    }
+
     setLoading(true)
     try {
-      await closeShift(pendingCloseId, shiftPin)
+      await closeShift(pendingCloseId, countedCash, shiftPin)
       toast.success('Shift berhasil ditutup!')
       setPendingCloseId(null)
       setShiftPin('')
+      setKasHitung('')
       router.refresh()
-    } catch (err: any) {
-      toast.error(err.message)
+    } catch (err: unknown) {
+      toast.error(getErrorMessage(err, "Gagal menutup shift."))
     } finally {
       setLoading(false)
     }
@@ -75,8 +99,8 @@ export default function ShiftClient({ shifts, users }: { shifts: any[], users: a
       setPettyCatatan("")
       setShiftPin("")
       router.refresh()
-    } catch (err: any) {
-      toast.error(err.message)
+    } catch (err: unknown) {
+      toast.error(getErrorMessage(err, "Gagal mencatat kas keluar."))
     } finally {
       setLoading(false)
     }
@@ -183,6 +207,13 @@ export default function ShiftClient({ shifts, users }: { shifts: any[], users: a
               <input type="password" inputMode="numeric" value={shiftPin} onChange={e => setShiftPin(e.target.value)}
                 className="w-full bg-zinc-800 border border-zinc-700 rounded-lg p-2 text-sm mt-1 focus:outline-none focus:border-emerald-500" />
             </div>
+            <div>
+              <label className="text-xs text-zinc-400">Kas fisik dihitung (Rp)</label>
+              <input type="number" min="0" step="1" value={kasHitung}
+                onChange={e => setKasHitung(e.target.value)}
+                className="w-full bg-zinc-800 border border-zinc-700 rounded-lg p-2 text-sm mt-1 focus:outline-none focus:border-emerald-500" />
+              <p className="mt-1 text-xs text-zinc-500">Hitung uang tunai yang benar-benar ada di laci sebelum menutup shift.</p>
+            </div>
             <div className="flex gap-2 pt-2">
               <button onClick={() => { setPendingCloseId(null); setShiftPin('') }} className="px-4 py-2 bg-zinc-700 rounded-lg text-sm">Batal</button>
               <button onClick={confirmCloseShift} disabled={loading} className="flex-1 bg-red-600 hover:bg-red-500 py-2 rounded-lg text-sm font-bold">Konfirmasi</button>
@@ -204,7 +235,8 @@ export default function ShiftClient({ shifts, users }: { shifts: any[], users: a
                   <th className="text-right py-2">Kas Awal</th>
                   <th className="text-right py-2">Penjualan</th>
                   <th className="text-right py-2">Kas Keluar</th>
-                  <th className="text-right py-2">Kas Akhir</th>
+                  <th className="text-right py-2">Kas Fisik</th>
+                  <th className="text-right py-2">Selisih</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-zinc-800">
@@ -216,8 +248,13 @@ export default function ShiftClient({ shifts, users }: { shifts: any[], users: a
                     </td>
                     <td className="py-2 text-right">Rp {s.kasAwal.toLocaleString('id-ID')}</td>
                     <td className="py-2 text-right text-emerald-400">Rp {(s.totalPenjualan || 0).toLocaleString('id-ID')}</td>
-                    <td className="py-2 text-right text-red-400" title={s.catatanPengeluaran}>Rp {s.pengeluaran.toLocaleString('id-ID')}</td>
-                    <td className="py-2 text-right font-bold">Rp {(s.kasAkhir || 0).toLocaleString('id-ID')}</td>
+                    <td className="py-2 text-right text-red-400" title={s.catatanPengeluaran ?? undefined}>Rp {s.pengeluaran.toLocaleString('id-ID')}</td>
+                    <td className="py-2 text-right font-bold">
+                      {s.kasHitung === null ? 'Belum dihitung' : `Rp ${s.kasHitung.toLocaleString('id-ID')}`}
+                    </td>
+                    <td className={`py-2 text-right font-bold ${s.selisih === null ? 'text-zinc-500' : s.selisih === 0 ? 'text-emerald-400' : 'text-amber-400'}`}>
+                      {s.selisih === null ? 'Belum dihitung' : `${s.selisih > 0 ? '+' : ''}Rp ${s.selisih.toLocaleString('id-ID')}`}
+                    </td>
                   </tr>
                 ))}
               </tbody>

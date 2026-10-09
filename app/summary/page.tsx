@@ -3,6 +3,7 @@ import { connection } from "next/server"
 import { Receipt, Banknote, Landmark, Percent, Download, CreditCard, Flame, Activity, ShieldAlert, History, Calendar, PieChart, Printer } from "lucide-react"
 
 import { getStartOfDayWIB, getEndOfDayWIB } from "@/lib/timezone"
+import { summarizeShiftCash } from "@/lib/shift-cash"
 
 export const instant = false
 
@@ -76,14 +77,16 @@ export default async function SummaryPage({ searchParams }: { searchParams: Prom
   // Fetch Shifts for Petty Cash calculation
   const shifts = await prisma.shift.findMany({
     where: { waktuBuka: { gte: targetDate, lt: nextDate } },
-    include: { kasir: true }
+    include: {
+      kasir: true,
+      bills: { where: { status: "LUNAS" } }
+    }
   })
   const totalPettyCash = shifts.reduce((acc, s) => acc + s.pengeluaran, 0)
   const totalOpeningCash = shifts.reduce((acc, s) => acc + (s.kasAwal || 0), 0)
-  const totalCashSales = bills
-    .filter((bill) => (bill.metodeBayar || 'TUNAI').toUpperCase() === 'TUNAI')
-    .reduce((acc, bill) => acc + bill.total, 0)
-  const cashDifference: number | null = null
+  const cashSummary = summarizeShiftCash(shifts)
+  const totalCashSales = cashSummary.cashSales
+  const cashDifference = cashSummary.cashDifference
   const totalNetto = Math.max(0, totalPendapatan - totalPettyCash)
 
   const categoryBreakdown: Record<string, { nama: string, total: number, qty: number }> = {}
@@ -281,10 +284,11 @@ export default async function SummaryPage({ searchParams }: { searchParams: Prom
             <div className="mt-2 text-xl font-black text-red-300">- Rp {totalPettyCash.toLocaleString('id-ID')}</div>
           </div>
           <div className={`rounded-xl p-4 ${cashDifference === null ? 'bg-zinc-800' : cashDifference >= 0 ? 'bg-emerald-950/40 border border-emerald-500/30' : 'bg-red-950/40 border border-red-500/30'}`}>
-            <div className="text-xs uppercase tracking-[0.2em] text-zinc-300">Selisih (kas fisik belum dicatat)</div>
+            <div className="text-xs uppercase tracking-[0.2em] text-zinc-300">Selisih Kas</div>
             <div className={`mt-2 text-xl font-black ${cashDifference === null ? 'text-zinc-400' : cashDifference >= 0 ? 'text-emerald-300' : 'text-red-300'}`}>
               {cashDifference === null ? 'Belum dihitung' : cashDifference >= 0 ? `+ Rp ${cashDifference.toLocaleString('id-ID')}` : `- Rp ${Math.abs(cashDifference).toLocaleString('id-ID')}`}
             </div>
+            {cashDifference === null && <p className="mt-1 text-xs text-zinc-400">Tutup shift dan masukkan kas fisik untuk menghitung selisih.</p>}
           </div>
         </div>
       </div>

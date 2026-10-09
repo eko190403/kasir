@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma"
 import { connection } from "next/server"
 import { getStartOfDayWIB, getEndOfDayWIB } from "@/lib/timezone"
+import { summarizeShiftCash } from "@/lib/shift-cash"
 
 export const instant = false
 
@@ -27,7 +28,10 @@ export default async function PrintEODPage({
     prisma.setting.findMany(),
     prisma.shift.findMany({
       where: { waktuBuka: { gte: targetDate, lt: nextDate } },
-      include: { kasir: true }
+      include: {
+        kasir: true,
+        bills: { where: { status: "LUNAS" } }
+      }
     })
   ])
 
@@ -73,16 +77,16 @@ export default async function PrintEODPage({
   // Total pax (jumlah tamu)
   const totalPax = bills.length
 
-  const cashReceived = Object.entries(paymentBreakdown)
-    .filter(([method]) => ['TUNAI', 'CASH'].includes(method))
-    .reduce((sum, [, amount]) => sum + amount, 0)
-  const nonCashSales = Object.entries(paymentBreakdown)
-    .filter(([method]) => !['TUNAI', 'CASH'].includes(method))
-    .reduce((sum, [, amount]) => sum + amount, 0)
-  const balance = totalKasBuka + cashReceived - totalPettyCash
+  const shiftCashSummary = summarizeShiftCash(shifts)
+  const cashReceived = shiftCashSummary.cashSales
+  const shiftSales = shifts.reduce((sum, shift) => sum + shift.bills.reduce((billSum, bill) => billSum + bill.total, 0), 0)
+  const nonCashSales = shiftSales - cashReceived
+  const balance = shiftCashSummary.expectedCash
   const cashTolerance = 50000
-  const cashDifference = (shifts.reduce((sum, shift) => sum + (shift.kasAkhir ?? (shift.kasAwal + (shift.totalPenjualan || 0) - (shift.pengeluaran || 0))), 0)) - (totalKasBuka + cashReceived - totalPettyCash)
-  const cashStatus = Math.abs(cashDifference) <= cashTolerance ? 'SESUAI' : Math.abs(cashDifference) <= cashTolerance * 2 ? 'WASPADA' : 'KRITIS'
+  const cashDifference = shiftCashSummary.cashDifference
+  const cashStatus = cashDifference === null
+    ? 'BELUM_DIHITUNG'
+    : Math.abs(cashDifference) <= cashTolerance ? 'SESUAI' : Math.abs(cashDifference) <= cashTolerance * 2 ? 'WASPADA' : 'KRITIS'
 
   const fmt = (n: number) => `Rp ${n.toLocaleString('id-ID')}`
   const dashes = '─'.repeat(42)
@@ -166,7 +170,9 @@ export default async function PrintEODPage({
         </div>
         <div className="flex justify-between">
           <span>SELISIH</span>
-          <span className={cashDifference >= 0 ? 'font-bold' : 'font-bold text-red-700'}>{cashDifference >= 0 ? `+ ${fmt(cashDifference)}` : `- ${fmt(Math.abs(cashDifference))}`}</span>
+          <span className={cashDifference === null ? 'font-bold text-amber-700' : cashDifference >= 0 ? 'font-bold' : 'font-bold text-red-700'}>
+            {cashDifference === null ? 'Belum dihitung' : cashDifference >= 0 ? `+ ${fmt(cashDifference)}` : `- ${fmt(Math.abs(cashDifference))}`}
+          </span>
         </div>
 
         {/* ─── Sales Summary ─── */}

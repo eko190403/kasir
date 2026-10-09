@@ -9,7 +9,10 @@ export default async function ShiftPage() {
     include: { kasir: true }
   })
 
-  const users = await prisma.user.findMany({ orderBy: { nama: 'asc' } })
+  const users = await prisma.user.findMany({
+    select: { id: true, nama: true, peran: true },
+    orderBy: { nama: 'asc' }
+  })
 
   return (
     <main className="container mx-auto p-4 space-y-6">

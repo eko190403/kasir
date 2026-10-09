@@ -1,0 +1,3 @@
+ALTER TABLE "Shift"
+  ADD COLUMN "kasHitung" INTEGER,
+  ADD COLUMN "selisih" INTEGER;
