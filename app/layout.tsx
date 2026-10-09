@@ -45,12 +45,12 @@ export default async function RootLayout({ children }: { children: React.ReactNo
 
               {/* Nav links - scrollable on mobile */}
               <div className="flex items-center gap-1 overflow-x-auto hide-scrollbar flex-1">
-                <Link href="/" className="px-3 py-1.5 rounded-lg hover:bg-zinc-800 hover:text-amber-300 transition text-xs font-medium whitespace-nowrap">Beranda</Link>
-                <Link href="/open-order" className="px-3 py-1.5 rounded-lg hover:bg-zinc-800 hover:text-amber-300 transition text-xs font-medium whitespace-nowrap">Open Order</Link>
-                <Link href="/reservasi" className="px-3 py-1.5 rounded-lg hover:bg-zinc-800 hover:text-amber-300 transition text-xs font-medium whitespace-nowrap">Reservasi</Link>
-                <Link href="/summary" className="px-3 py-1.5 rounded-lg hover:bg-zinc-800 hover:text-amber-300 transition text-xs font-medium whitespace-nowrap">Summary</Link>
-                <Link href="/eod-report" className="px-3 py-1.5 rounded-lg hover:bg-zinc-800 hover:text-amber-300 transition text-xs font-medium whitespace-nowrap">Lap. Harian</Link>
-                <Link href="/riwayat" className="px-3 py-1.5 rounded-lg hover:bg-zinc-800 hover:text-amber-300 transition text-xs font-medium whitespace-nowrap">Riwayat</Link>
+                <Link href="/" prefetch={false} className="px-3 py-1.5 rounded-lg hover:bg-zinc-800 hover:text-amber-300 transition text-xs font-medium whitespace-nowrap">Beranda</Link>
+                <Link href="/open-order" prefetch={false} className="px-3 py-1.5 rounded-lg hover:bg-zinc-800 hover:text-amber-300 transition text-xs font-medium whitespace-nowrap">Open Order</Link>
+                <Link href="/reservasi" prefetch={false} className="px-3 py-1.5 rounded-lg hover:bg-zinc-800 hover:text-amber-300 transition text-xs font-medium whitespace-nowrap">Reservasi</Link>
+                <Link href="/summary" prefetch={false} className="px-3 py-1.5 rounded-lg hover:bg-zinc-800 hover:text-amber-300 transition text-xs font-medium whitespace-nowrap">Summary</Link>
+                <Link href="/eod-report" prefetch={false} className="px-3 py-1.5 rounded-lg hover:bg-zinc-800 hover:text-amber-300 transition text-xs font-medium whitespace-nowrap">Lap. Harian</Link>
+                <Link href="/riwayat" prefetch={false} className="px-3 py-1.5 rounded-lg hover:bg-zinc-800 hover:text-amber-300 transition text-xs font-medium whitespace-nowrap">Riwayat</Link>
 
                 <div className="w-px h-5 bg-zinc-700 mx-1 shrink-0" />
 
@@ -59,10 +59,10 @@ export default async function RootLayout({ children }: { children: React.ReactNo
 
                 <div className="w-px h-5 bg-zinc-700 mx-1 shrink-0" />
 
-                <Link href="/menu" className="px-3 py-1.5 rounded-lg hover:bg-zinc-800 text-zinc-400 hover:text-white transition text-xs font-medium whitespace-nowrap">Menu</Link>
-                <Link href="/sofas" className="px-3 py-1.5 rounded-lg hover:bg-zinc-800 text-zinc-400 hover:text-white transition text-xs font-medium whitespace-nowrap">Meja</Link>
-                <Link href="/staf" className="px-3 py-1.5 rounded-lg hover:bg-zinc-800 text-zinc-400 hover:text-white transition text-xs font-medium whitespace-nowrap">Staf</Link>
-                <Link href="/shift" className="px-3 py-1.5 rounded-lg hover:bg-zinc-800 text-zinc-400 hover:text-white transition text-xs font-medium whitespace-nowrap">Shift</Link>
+                <Link href="/menu" prefetch={false} className="px-3 py-1.5 rounded-lg hover:bg-zinc-800 text-zinc-400 hover:text-white transition text-xs font-medium whitespace-nowrap">Menu</Link>
+                <Link href="/sofas" prefetch={false} className="px-3 py-1.5 rounded-lg hover:bg-zinc-800 text-zinc-400 hover:text-white transition text-xs font-medium whitespace-nowrap">Meja</Link>
+                <Link href="/staf" prefetch={false} className="px-3 py-1.5 rounded-lg hover:bg-zinc-800 text-zinc-400 hover:text-white transition text-xs font-medium whitespace-nowrap">Staf</Link>
+                <Link href="/shift" prefetch={false} className="px-3 py-1.5 rounded-lg hover:bg-zinc-800 text-zinc-400 hover:text-white transition text-xs font-medium whitespace-nowrap">Shift</Link>
                 <a href="/settings" className="px-3 py-1.5 rounded-lg hover:bg-zinc-800 text-zinc-400 hover:text-white transition text-xs font-medium whitespace-nowrap">⚙ Pengaturan</a>
               </div>
 

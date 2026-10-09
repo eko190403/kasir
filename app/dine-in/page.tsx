@@ -47,6 +47,7 @@ export default async function DineInPage() {
     return (
       <Link
         href={`/sofa/${sofa.id}`}
+        prefetch={false}
         className={`relative flex flex-col items-center justify-center rounded-xl border-2 transition-all duration-300 cursor-pointer group ${bgColor} ${pulseClass} ${className}`}
       >
         {typeLabel && (
