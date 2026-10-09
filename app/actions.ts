@@ -466,44 +466,54 @@ export async function closeBill(billId: string, metodeBayar: string, uangDiterim
   const { getSettings } = await import('@/lib/bill')
   const settings = await getSettings()
 
-  // Mark bill as LUNAS
-  await prisma.bill.update({
-    where: { id: billId },
-    data: {
-      status: "LUNAS",
-      waktuTutup: new Date(),
-      metodeBayar: normalizedMethod
-    }
-  })
-
-  if (bill.sofaId) {
-    await prisma.sofa.update({
-      where: { id: bill.sofaId },
-      data: { status: "KOSONG" }
+  await prisma.$transaction(async (tx) => {
+    const closedBill = await tx.bill.updateMany({
+      where: { id: billId, status: "TERBUKA" },
+      data: {
+        status: "LUNAS",
+        waktuTutup: new Date(),
+        metodeBayar: normalizedMethod
+      }
     })
-    revalidatePath(`/sofa/${bill.sofaId}`)
-  }
-
-  await prisma.auditLog.create({
-    data: {
-      userId: bill.kasirId || null,
-      aksi: 'CLOSE_BILL',
-      entitas: 'Bill',
-      detail: JSON.stringify({
-        billId,
-        metodeBayar: normalizedMethod,
-        total: totalBill,
-        uangDiterima: nominalDiterima,
-        kembalian,
-        pajak: settings.pajak,
-        serviceCharge: settings.serviceCharge
-      })
+    if (closedBill.count !== 1) {
+      throw new Error('Bill ini sudah ditutup atau dibatalkan.')
     }
+
+    if (bill.sofaId) {
+      const remainingOpenBills = await tx.bill.count({
+        where: { sofaId: bill.sofaId, status: "TERBUKA" }
+      })
+      if (remainingOpenBills === 0) {
+        await tx.sofa.update({
+          where: { id: bill.sofaId },
+          data: { status: "KOSONG" }
+        })
+      }
+    }
+
+    await tx.auditLog.create({
+      data: {
+        userId: bill.kasirId || null,
+        aksi: 'CLOSE_BILL',
+        entitas: 'Bill',
+        detail: JSON.stringify({
+          billId,
+          metodeBayar: normalizedMethod,
+          total: totalBill,
+          uangDiterima: nominalDiterima,
+          kembalian,
+          pajak: settings.pajak,
+          serviceCharge: settings.serviceCharge
+        })
+      }
+    })
   })
 
   revalidatePath(`/`)
   revalidatePath(`/open-order`)
   revalidatePath(`/summary`)
+  revalidatePath(`/dine-in`)
+  if (bill.sofaId) revalidatePath(`/sofa/${bill.sofaId}`)
 }
 
 export async function returnItem(itemId: string, alasan: string, pin?: string) {
@@ -831,11 +841,22 @@ export async function pindahSofa(billId: string, sofaBaruId: string) {
 }
 
 export async function setSofaStatus(sofaId: string, status: "KOSONG" | "TERISI" | "MENUNGGU_MAKANAN" | "SIAP_BAYAR") {
+  if (status === "KOSONG") {
+    const activeBill = await prisma.bill.findFirst({
+      where: { sofaId, status: "TERBUKA" },
+      select: { id: true }
+    })
+    if (activeBill) {
+      throw new Error('Meja masih memiliki bill terbuka. Selesaikan atau batalkan bill terlebih dahulu.')
+    }
+  }
+
   await prisma.sofa.update({
     where: { id: sofaId },
     data: { status }
   })
   revalidatePath(`/`)
+  revalidatePath(`/dine-in`)
   revalidatePath(`/sofa/${sofaId}`)
 }
 
