@@ -83,10 +83,7 @@ export default async function SummaryPage({ searchParams }: { searchParams: Prom
   const totalCashSales = bills
     .filter((bill) => (bill.metodeBayar || 'TUNAI').toUpperCase() === 'TUNAI')
     .reduce((acc, bill) => acc + bill.total, 0)
-  const expectedCash = totalOpeningCash + totalCashSales - totalPettyCash
-  const actualClosingCash = shifts.reduce((acc, s) => acc + (s.kasAkhir ?? ((s.kasAwal || 0) + (s.totalPenjualan || 0) - (s.pengeluaran || 0))), 0)
-  const hasClosedShifts = shifts.length > 0 && shifts.every((shift) => shift.waktuTutup !== null)
-  const cashDifference = hasClosedShifts ? actualClosingCash - expectedCash : null
+  const cashDifference: number | null = null
   const totalNetto = Math.max(0, totalPendapatan - totalPettyCash)
 
   const categoryBreakdown: Record<string, { nama: string, total: number, qty: number }> = {}
@@ -284,7 +281,7 @@ export default async function SummaryPage({ searchParams }: { searchParams: Prom
             <div className="mt-2 text-xl font-black text-red-300">- Rp {totalPettyCash.toLocaleString('id-ID')}</div>
           </div>
           <div className={`rounded-xl p-4 ${cashDifference === null ? 'bg-zinc-800' : cashDifference >= 0 ? 'bg-emerald-950/40 border border-emerald-500/30' : 'bg-red-950/40 border border-red-500/30'}`}>
-            <div className="text-xs uppercase tracking-[0.2em] text-zinc-300">Selisih</div>
+            <div className="text-xs uppercase tracking-[0.2em] text-zinc-300">Selisih (kas fisik belum dicatat)</div>
             <div className={`mt-2 text-xl font-black ${cashDifference === null ? 'text-zinc-400' : cashDifference >= 0 ? 'text-emerald-300' : 'text-red-300'}`}>
               {cashDifference === null ? 'Belum dihitung' : cashDifference >= 0 ? `+ Rp ${cashDifference.toLocaleString('id-ID')}` : `- Rp ${Math.abs(cashDifference).toLocaleString('id-ID')}`}
             </div>
