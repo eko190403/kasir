@@ -1,5 +1,6 @@
 import Link from "next/link"
-import { createTakeAwayOrder, cleanupEmptyBills } from "./actions"
+import { connection } from "next/server"
+import { createTakeAwayOrder } from "./actions"
 import { prisma } from "@/lib/prisma"
 import { getStartOfDayWIB, getEndOfDayWIB } from "@/lib/timezone"
 import { Utensils, ShoppingBag, Calendar, ListTodo, BookOpen, PieChart, Wallet, ChefHat, Wine, Users, Settings, Sparkles } from "lucide-react"
@@ -7,14 +8,19 @@ import { Utensils, ShoppingBag, Calendar, ListTodo, BookOpen, PieChart, Wallet, 
 export const instant = false
 
 export default async function Home() {
-  await cleanupEmptyBills()
+  await connection()
 
   const todayStart = getStartOfDayWIB()
   const todayEnd = getEndOfDayWIB()
 
   const [todayBills, openOrderCount, reservationCount] = await Promise.all([
     prisma.bill.findMany({
-      where: { status: "LUNAS", waktuTutup: { gte: todayStart, lte: todayEnd } }
+      where: { status: "LUNAS", waktuTutup: { gte: todayStart, lte: todayEnd } },
+      select: {
+        total: true,
+        metodeBayar: true,
+        payments: { select: { metode: true, jumlah: true } }
+      }
     }),
     prisma.bill.count({
       where: { status: "TERBUKA" }

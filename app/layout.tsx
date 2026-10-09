@@ -1,6 +1,7 @@
 export const instant = false
 
 import type { Metadata } from "next";
+import Link from "next/link";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import LogoutButton from "@/components/LogoutButton";
@@ -44,12 +45,12 @@ export default async function RootLayout({ children }: { children: React.ReactNo
 
               {/* Nav links - scrollable on mobile */}
               <div className="flex items-center gap-1 overflow-x-auto hide-scrollbar flex-1">
-                <a href="/" className="px-3 py-1.5 rounded-lg hover:bg-zinc-800 hover:text-amber-300 transition text-xs font-medium whitespace-nowrap">Beranda</a>
-                <a href="/open-order" className="px-3 py-1.5 rounded-lg hover:bg-zinc-800 hover:text-amber-300 transition text-xs font-medium whitespace-nowrap">Open Order</a>
-                <a href="/reservasi" className="px-3 py-1.5 rounded-lg hover:bg-zinc-800 hover:text-amber-300 transition text-xs font-medium whitespace-nowrap">Reservasi</a>
-                <a href="/summary" className="px-3 py-1.5 rounded-lg hover:bg-zinc-800 hover:text-amber-300 transition text-xs font-medium whitespace-nowrap">Summary</a>
-                <a href="/eod-report" className="px-3 py-1.5 rounded-lg hover:bg-zinc-800 hover:text-amber-300 transition text-xs font-medium whitespace-nowrap">Lap. Harian</a>
-                <a href="/riwayat" className="px-3 py-1.5 rounded-lg hover:bg-zinc-800 hover:text-amber-300 transition text-xs font-medium whitespace-nowrap">Riwayat</a>
+                <Link href="/" className="px-3 py-1.5 rounded-lg hover:bg-zinc-800 hover:text-amber-300 transition text-xs font-medium whitespace-nowrap">Beranda</Link>
+                <Link href="/open-order" className="px-3 py-1.5 rounded-lg hover:bg-zinc-800 hover:text-amber-300 transition text-xs font-medium whitespace-nowrap">Open Order</Link>
+                <Link href="/reservasi" className="px-3 py-1.5 rounded-lg hover:bg-zinc-800 hover:text-amber-300 transition text-xs font-medium whitespace-nowrap">Reservasi</Link>
+                <Link href="/summary" className="px-3 py-1.5 rounded-lg hover:bg-zinc-800 hover:text-amber-300 transition text-xs font-medium whitespace-nowrap">Summary</Link>
+                <Link href="/eod-report" className="px-3 py-1.5 rounded-lg hover:bg-zinc-800 hover:text-amber-300 transition text-xs font-medium whitespace-nowrap">Lap. Harian</Link>
+                <Link href="/riwayat" className="px-3 py-1.5 rounded-lg hover:bg-zinc-800 hover:text-amber-300 transition text-xs font-medium whitespace-nowrap">Riwayat</Link>
 
                 <div className="w-px h-5 bg-zinc-700 mx-1 shrink-0" />
 
@@ -58,10 +59,10 @@ export default async function RootLayout({ children }: { children: React.ReactNo
 
                 <div className="w-px h-5 bg-zinc-700 mx-1 shrink-0" />
 
-                <a href="/menu" className="px-3 py-1.5 rounded-lg hover:bg-zinc-800 text-zinc-400 hover:text-white transition text-xs font-medium whitespace-nowrap">Menu</a>
-                <a href="/sofas" className="px-3 py-1.5 rounded-lg hover:bg-zinc-800 text-zinc-400 hover:text-white transition text-xs font-medium whitespace-nowrap">Meja</a>
-                <a href="/staf" className="px-3 py-1.5 rounded-lg hover:bg-zinc-800 text-zinc-400 hover:text-white transition text-xs font-medium whitespace-nowrap">Staf</a>
-                <a href="/shift" className="px-3 py-1.5 rounded-lg hover:bg-zinc-800 text-zinc-400 hover:text-white transition text-xs font-medium whitespace-nowrap">Shift</a>
+                <Link href="/menu" className="px-3 py-1.5 rounded-lg hover:bg-zinc-800 text-zinc-400 hover:text-white transition text-xs font-medium whitespace-nowrap">Menu</Link>
+                <Link href="/sofas" className="px-3 py-1.5 rounded-lg hover:bg-zinc-800 text-zinc-400 hover:text-white transition text-xs font-medium whitespace-nowrap">Meja</Link>
+                <Link href="/staf" className="px-3 py-1.5 rounded-lg hover:bg-zinc-800 text-zinc-400 hover:text-white transition text-xs font-medium whitespace-nowrap">Staf</Link>
+                <Link href="/shift" className="px-3 py-1.5 rounded-lg hover:bg-zinc-800 text-zinc-400 hover:text-white transition text-xs font-medium whitespace-nowrap">Shift</Link>
                 <a href="/settings" className="px-3 py-1.5 rounded-lg hover:bg-zinc-800 text-zinc-400 hover:text-white transition text-xs font-medium whitespace-nowrap">⚙ Pengaturan</a>
               </div>
 

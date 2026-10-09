@@ -1,12 +1,13 @@
 import { prisma } from "@/lib/prisma"
 import Link from "next/link"
+import { connection } from "next/server"
 import { ShoppingBag } from "lucide-react"
-import { createTakeAwayOrder, cleanupEmptyBills } from "@/app/actions"
+import { createTakeAwayOrder } from "@/app/actions"
 
 export const instant = false
 
 export default async function DineInPage() {
-  await cleanupEmptyBills()
+  await connection()
 
   const sofas = await prisma.sofa.findMany({
     where: { isDeleted: false },
