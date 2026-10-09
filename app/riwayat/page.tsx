@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma"
 import RiwayatClient from "@/components/RiwayatClient"
+import { connection } from "next/server"
 import { History, ShieldCheck, AlertTriangle, Clock3 } from "lucide-react"
 
 export const instant = false
@@ -22,6 +23,7 @@ function parseLogDetail(detail: string) {
 }
 
 export default async function RiwayatPage() {
+  await connection()
   const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)
 
   const [recentAuditLogs, sensitiveAuditCount, weeklyAuditCount] = await Promise.all([
