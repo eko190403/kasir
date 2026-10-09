@@ -18,6 +18,8 @@ export default function BillClient({
 }) {
   const router = useRouter()
   const [loading, setLoading] = useState(false)
+  const [billItems, setBillItems] = useState(initialBillItems)
+  const [currentTotals, setCurrentTotals] = useState(totals)
   const [catatan, setCatatan] = useState("")
   const [menuFilter, setMenuFilter] = useState<"SEMUA" | "MAKANAN" | "MINUMAN">("SEMUA")
   
@@ -96,9 +98,11 @@ export default function BillClient({
   const handleAddItem = async (menuId: string) => {
     setLoading(true)
     try {
-      await addMenuItemToBill(billId, menuId, 1, catatan)
+      const result = await addMenuItemToBill(billId, menuId, 1, catatan)
+      setBillItems(items => [...items, result.item])
+      setCurrentTotals(result.totals)
+      setUangDiterima(String(result.totals.total))
       setCatatan("")
-      router.refresh()
     } catch (err: any) {
       toast.error(err.message)
     } finally {
@@ -107,7 +111,7 @@ export default function BillClient({
   }
 
   const handleClose = async () => {
-    const totalTagihan = Number(totals.total) || 0
+    const totalTagihan = Number(currentTotals.total) || 0
     const terima = paymentMethod === 'TUNAI' ? (parseInt(uangDiterima) || 0) : totalTagihan
     const kembali = paymentMethod === 'TUNAI' ? Math.max(0, terima - totalTagihan) : 0
 
@@ -199,8 +203,8 @@ export default function BillClient({
   // Calculate splits
   const calculateSplits = () => {
     const splits = []
-    const base = Math.floor(totals.total / splitWays)
-    let remainder = totals.total % splitWays
+    const base = Math.floor(currentTotals.total / splitWays)
+    let remainder = currentTotals.total % splitWays
     for(let i=0; i<splitWays; i++) {
       splits.push(base + (remainder > 0 ? 1 : 0))
       remainder--
@@ -264,10 +268,10 @@ export default function BillClient({
         </div>
         
         <div className="p-4 flex-1 max-h-[50vh] overflow-y-auto space-y-3">
-          {initialBillItems.length === 0 ? (
+          {billItems.length === 0 ? (
             <div className="text-zinc-500 text-sm italic">Belum ada pesanan</div>
           ) : (
-            initialBillItems.map(item => {
+            billItems.map(item => {
               const dicoret = item.diretur || item.isVoid || item.isComp
               let label = ""
               if (item.diretur) label = "DIRETUR"
@@ -344,13 +348,13 @@ export default function BillClient({
         <div className="p-4 border-t border-zinc-800 bg-zinc-950/50 rounded-b-xl space-y-2 text-sm">
           <div className="flex justify-between text-zinc-400">
             <span>Subtotal</span>
-            <span>Rp {totals.subtotal.toLocaleString('id-ID')}</span>
+            <span>Rp {currentTotals.subtotal.toLocaleString('id-ID')}</span>
           </div>
 
           {/* Diskon Row */}
           <div className="flex justify-between text-zinc-400 items-center">
             <button onClick={() => setShowDiscount(!showDiscount)} className="text-red-400 hover:text-red-300 text-xs underline">
-              Diskon {totals.diskon > 0 ? `(- Rp ${totals.diskon.toLocaleString('id-ID')})` : '(klik untuk tambah)'}
+              Diskon {currentTotals.diskon > 0 ? `(- Rp ${currentTotals.diskon.toLocaleString('id-ID')})` : '(klik untuk tambah)'}
             </button>
           </div>
           {showDiscount && (
@@ -368,15 +372,15 @@ export default function BillClient({
 
           <div className="flex justify-between text-zinc-400">
             <span>Service Charge</span>
-            <span>Rp {totals.service.toLocaleString('id-ID')}</span>
+            <span>Rp {currentTotals.service.toLocaleString('id-ID')}</span>
           </div>
           <div className="flex justify-between text-zinc-400">
             <span>Pajak</span>
-            <span>Rp {totals.pajak.toLocaleString('id-ID')}</span>
+            <span>Rp {currentTotals.pajak.toLocaleString('id-ID')}</span>
           </div>
           <div className="flex justify-between font-bold text-lg text-emerald-400 pt-2 border-t border-zinc-800 mt-2">
             <span>Total</span>
-            <span>Rp {totals.total.toLocaleString('id-ID')}</span>
+            <span>Rp {currentTotals.total.toLocaleString('id-ID')}</span>
           </div>
 
           {!showPayment && !showCancel ? (
@@ -394,7 +398,7 @@ export default function BillClient({
                 </button>
                 <button 
                   onClick={() => setShowPayment(true)}
-                  disabled={loading || initialBillItems.length === 0}
+                  disabled={loading || billItems.length === 0}
                   className="flex-1 bg-amber-600 hover:bg-amber-500 text-white font-bold py-3 rounded-lg disabled:opacity-50 transition flex items-center justify-center gap-2"
                 >
                   Bayar (Checkout)
@@ -483,15 +487,15 @@ export default function BillClient({
                 <div className="border-t border-zinc-800 pt-2">
                   <label className="text-xs text-zinc-400">Uang Diterima (Rp)</label>
                   <input 
-                    type="number" min={totals.total}
+                    type="number" min={currentTotals.total}
                     value={uangDiterima}
                     onChange={e => setUangDiterima(e.target.value)}
                     className="w-full bg-zinc-800 border border-zinc-700 rounded-lg p-2 mt-1 focus:outline-none focus:border-emerald-500"
                   />
-                  {parseInt(uangDiterima) >= totals.total && (
+                  {parseInt(uangDiterima) >= currentTotals.total && (
                     <div className="flex justify-between mt-2 text-sm">
                       <span className="text-zinc-400">Kembalian</span>
-                      <span className="font-bold text-emerald-400">Rp {(parseInt(uangDiterima) - totals.total).toLocaleString('id-ID')}</span>
+                      <span className="font-bold text-emerald-400">Rp {(parseInt(uangDiterima) - currentTotals.total).toLocaleString('id-ID')}</span>
                     </div>
                   )}
                 </div>

@@ -9,7 +9,11 @@ export const instant = false
 
 export default async function SofaPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
-  const sofa = await prisma.sofa.findUnique({ where: { id } })
+  const [sofa, menuItems, allSofas] = await Promise.all([
+    prisma.sofa.findUnique({ where: { id } }),
+    prisma.menuItem.findMany({ orderBy: { kategori: 'asc' } }),
+    prisma.sofa.findMany({ orderBy: { nama: 'asc' } })
+  ])
   
   if (!sofa) {
     return (
@@ -21,14 +25,7 @@ export default async function SofaPage({ params }: { params: Promise<{ id: strin
   }
 
   // Ensure there is an active bill for this sofa (New Order / Open Order)
-  const bill = await createOrGetActiveBill(sofa.id)
-
-  const menuItems = await prisma.menuItem.findMany({
-    orderBy: { kategori: 'asc' }
-  })
-
-  // Ambil semua sofa untuk fitur pindah
-  const allSofas = await prisma.sofa.findMany({ orderBy: { nama: 'asc' } })
+  const bill = await createOrGetActiveBill(sofa.id, sofa.status)
 
   return (
     <main className="container mx-auto p-4 space-y-6">
@@ -46,7 +43,8 @@ export default async function SofaPage({ params }: { params: Promise<{ id: strin
         </div>
       </header>
 
-      <BillClient 
+      <BillClient
+        key={bill.updatedAt.toISOString()}
         billId={bill.id} 
         menuItems={menuItems}
         initialBillItems={bill.billItems}

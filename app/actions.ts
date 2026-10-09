@@ -151,7 +151,25 @@ export async function getKitchenItems(kategori: "MAKANAN" | "MINUMAN") {
 }
 
 
-export async function createOrGetActiveBill(sofaId: string) {
+export async function createOrGetActiveBill(
+  sofaId: string,
+  sofaStatus: "KOSONG" | "TERISI" | "MENUNGGU_MAKANAN" | "SIAP_BAYAR"
+) {
+  const activeBill = await prisma.bill.findFirst({
+    where: { sofaId, status: "TERBUKA" },
+    include: { billItems: true }
+  })
+
+  if (activeBill) {
+    if (sofaStatus === "KOSONG") {
+      await prisma.sofa.update({
+        where: { id: sofaId },
+        data: { status: "TERISI" }
+      })
+    }
+    return activeBill
+  }
+
   const session = await getSession()
   const kasirId = session?.user?.id
   const [shift, pajakSetting, serviceSetting] = await Promise.all([
@@ -251,13 +269,23 @@ export async function addMenuItemToBill(billId: string, menuItemId: string, qty:
     throw new Error("Jumlah item harus bilangan bulat dan lebih dari 0.")
   }
 
-  const menuItem = await prisma.menuItem.findUnique({ where: { id: menuItemId } })
+  const [menuItem, settings] = await Promise.all([
+    prisma.menuItem.findUnique({ where: { id: menuItemId } }),
+    prisma.setting.findMany({
+      where: {
+        kunci: {
+          in: ['HAPPY_HOUR_AKTIF', 'HAPPY_HOUR_MULAI', 'HAPPY_HOUR_SELESAI', 'HAPPY_HOUR_DISKON']
+        }
+      },
+      select: { kunci: true, nilai: true }
+    })
+  ])
   if (!menuItem) throw new Error("Menu item not found")
   if (!menuItem.tersedia) throw new Error("Menu item habis")
 
   // Check Happy Hour
-  const settings = await prisma.setting.findMany()
-  const getSetting = (k: string, fb: string) => settings.find(s => s.kunci === k)?.nilai || fb
+  const settingsMap = new Map(settings.map(setting => [setting.kunci, setting.nilai]))
+  const getSetting = (k: string, fb: string) => settingsMap.get(k) || fb
   const hhAktif = getSetting('HAPPY_HOUR_AKTIF', 'false') === 'true'
   const hhMulai = getSetting('HAPPY_HOUR_MULAI', '17:00')
   const hhSelesai = getSetting('HAPPY_HOUR_SELESAI', '20:00')
@@ -275,7 +303,7 @@ export async function addMenuItemToBill(billId: string, menuItemId: string, qty:
     }
   }
 
-  await prisma.billItem.create({
+  const item = await prisma.billItem.create({
     data: {
       billId,
       menuItemId,
@@ -287,8 +315,9 @@ export async function addMenuItemToBill(billId: string, menuItemId: string, qty:
     }
   })
 
-  await calculateBillTotal(billId)
+  const totals = await calculateBillTotal(billId)
   revalidatePath(`/`)
+  return { item, totals }
 }
 
 export async function updateItemQty(itemId: string, delta: number) {

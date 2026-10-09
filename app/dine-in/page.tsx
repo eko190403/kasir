@@ -11,12 +11,7 @@ export default async function DineInPage() {
 
   const sofas = await prisma.sofa.findMany({
     where: { isDeleted: false },
-    orderBy: { nama: 'asc' },
-    include: {
-      bills: {
-        where: { status: 'TERBUKA' }
-      }
-    }
+    orderBy: { nama: 'asc' }
   })
 
   const sofaMap = new Map(sofas.map(s => [s.nama, s]))
