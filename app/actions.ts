@@ -10,6 +10,7 @@ import { setSession, logout as clearSession, getSession } from "@/lib/auth"
 import { getStartOfDayWIB, getEndOfDayWIB } from "@/lib/timezone"
 import { summarizeShiftCash } from "@/lib/shift-cash"
 import { cashSalesForBill } from "@/lib/shift-cash"
+import { nextShiftExpenseTotal, normalizeShiftExpenseInput } from "@/lib/shift-expense"
 
 // ─── Auth Helpers ───────────────────────────────────────────────────
 const ROLE_ORDER = ["PELAYAN", "BARTENDER", "DAPUR", "KASIR", "MANAJER"] as const
@@ -892,8 +893,11 @@ export async function closeShift(shiftId: string, kasHitung: number, pin?: strin
 
 export async function catatPengeluaran(shiftId: string, jumlah: number, catatan: string, pin?: string) {
   const session = await requireSession()
+  if (typeof shiftId !== "string" || !shiftId.trim()) throw new Error("Shift tidak valid.")
+  const expense = normalizeShiftExpenseInput(jumlah, catatan)
   const shift = await prisma.shift.findUnique({ where: { id: shiftId } })
-  if (!shift) throw new Error('Shift not found')
+  if (!shift) throw new Error("Shift tidak ditemukan.")
+  if (shift.waktuTutup) throw new Error("Pengeluaran hanya dapat dicatat pada shift yang masih aktif.")
 
   const isOwner = session.user.id === shift.kasirId
   const isManager = session.user.peran === 'MANAJER'
@@ -902,26 +906,45 @@ export async function catatPengeluaran(shiftId: string, jumlah: number, catatan:
     throw new Error('Hanya kasir pemilik shift atau manager yang dapat mencatat pengeluaran.')
   }
 
-  if (pin) {
+  if (pin !== undefined && pin !== "") {
+    if (typeof pin !== "string") throw new Error("PIN manajer tidak valid.")
     await verifyManagerPin(pin)
   }
 
-  await prisma.shift.update({
-    where: { id: shiftId },
-    data: { 
-      pengeluaran: shift.pengeluaran + jumlah,
-      catatanPengeluaran: shift.catatanPengeluaran ? `${shift.catatanPengeluaran} | ${catatan}` : catatan 
+  await prisma.$transaction(async (tx) => {
+    const currentShift = await tx.shift.findUnique({ where: { id: shiftId } })
+    if (!currentShift) throw new Error("Shift tidak ditemukan.")
+    if (currentShift.waktuTutup) throw new Error("Pengeluaran hanya dapat dicatat pada shift yang masih aktif.")
+    if (session.user.id !== currentShift.kasirId && session.user.peran !== "MANAJER") {
+      throw new Error("Hanya kasir pemilik shift atau manager yang dapat mencatat pengeluaran.")
     }
-  })
 
-  await prisma.auditLog.create({
-    data: {
-      userId: session.user.id,
-      aksi: 'EXPENSE_SHIFT',
-      entitas: 'Shift',
-      detail: JSON.stringify({ shiftId, jumlah, catatan, otorisasi: session.user.nama })
-    }
-  })
+    const totalPengeluaran = nextShiftExpenseTotal(currentShift.pengeluaran, expense.jumlah)
+    const updated = await tx.shift.updateMany({
+      where: { id: shiftId, waktuTutup: null },
+      data: {
+        pengeluaran: totalPengeluaran,
+        catatanPengeluaran: currentShift.catatanPengeluaran
+          ? `${currentShift.catatanPengeluaran} | ${expense.catatan}`
+          : expense.catatan
+      }
+    })
+    if (updated.count === 0) throw new Error("Shift sudah ditutup. Pengeluaran tidak dicatat.")
+
+    await tx.auditLog.create({
+      data: {
+        userId: session.user.id,
+        aksi: 'EXPENSE_SHIFT',
+        entitas: 'Shift',
+        detail: JSON.stringify({
+          shiftId,
+          jumlah: expense.jumlah,
+          catatan: expense.catatan,
+          otorisasi: session.user.nama
+        })
+      }
+    })
+  }, { isolationLevel: "Serializable" })
 
   revalidatePath(`/shift`)
 }

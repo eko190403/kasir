@@ -90,6 +90,9 @@ export default function RealtimeBoard({
   const activeItems = items.filter(i => i.status !== "SIAP")
 
   const handleStatusChange = async (id: string, namaItem: string, newStatus: "DIKIRIM" | "DIPROSES" | "SIAP") => {
+    const previousStatus = items.find(item => item.id === id)?.status
+    if (!previousStatus) return
+
     // Optimistic update
     setItems(current => current.map(i => i.id === id ? { ...i, status: newStatus } : i))
     try {
@@ -98,7 +101,7 @@ export default function RealtimeBoard({
       if (newStatus === "SIAP") toast.success(`Siap diantar: ${namaItem}!`)
     } catch {
       toast.error("Gagal mengupdate status, coba lagi.")
-      setItems(current => current.map(i => i.id === id ? { ...i, status: "DIKIRIM" } : i))
+      setItems(current => current.map(i => i.id === id ? { ...i, status: previousStatus } : i))
     }
   }
 
