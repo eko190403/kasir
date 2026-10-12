@@ -10,9 +10,8 @@ export const instant = false
 
 export default async function SofaPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
-  const [sofa, menuItems, allSofas] = await Promise.all([
+  const [sofa, allSofas] = await Promise.all([
     prisma.sofa.findUnique({ where: { id } }),
-    prisma.menuItem.findMany({ orderBy: { kategori: 'asc' } }),
     prisma.sofa.findMany({ orderBy: { nama: 'asc' } })
   ])
   
@@ -36,6 +35,12 @@ export default async function SofaPage({ params }: { params: Promise<{ id: strin
     throw error
   }
 
+  const sofaStatus = await prisma.sofa.findUnique({
+    where: { id: sofa.id },
+    select: { status: true }
+  })
+  if (!sofaStatus) throw new Error("Meja tidak ditemukan atau tidak aktif.")
+
   const bill = await prisma.bill.findUnique({
     where: { id: activeBill.id },
     include: { billItems: true, payments: true }
@@ -47,8 +52,6 @@ export default async function SofaPage({ params }: { params: Promise<{ id: strin
     orderBy: { kategori: 'asc' }
   })
 
-  // Ambil semua sofa untuk fitur pindah
-  const allSofas = await prisma.sofa.findMany({ orderBy: { nama: 'asc' } })
   const depositReservasis = await prisma.reservasi.findMany({
     where: {
       sofaId: sofa.id,
@@ -68,7 +71,7 @@ export default async function SofaPage({ params }: { params: Promise<{ id: strin
           <p className="text-zinc-400 text-sm mt-1 mb-2">Kapasitas: {sofa.kapasitas} Orang</p>
           <SofaStatusToggle
             sofaId={sofa.id}
-            currentStatus={sofaStatus}
+            currentStatus={sofaStatus.status}
             hasActiveBill={bill.status === "TERBUKA"}
           />
         </div>

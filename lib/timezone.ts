@@ -1,5 +1,5 @@
 import { fromZonedTime, format, formatInTimeZone, toZonedTime } from 'date-fns-tz';
-import { addDays, subHours } from 'date-fns';
+import { addDays } from 'date-fns';
 
 const TIMEZONE = 'Asia/Jakarta';
 const OPERATIONAL_DAY_START_HOUR = 6;
@@ -30,12 +30,6 @@ export function getEndOfDayWIB(dateStr?: string | Date): Date {
     : dateStr ?? formatInTimeZone(new Date(), TIMEZONE, 'yyyy-MM-dd');
   const nextDate = addDays(new Date(`${date}T00:00:00.000Z`), 1).toISOString().slice(0, 10);
   return new Date(fromZonedTime(`${nextDate}T${String(OPERATIONAL_DAY_START_HOUR).padStart(2, '0')}:00:00`, TIMEZONE).getTime() - 1);
-}
-
-export function getOperationalBusinessDate(date: Date = new Date()): Date {
-  const localDateTime = formatInTimeZone(date, TIMEZONE, 'yyyy-MM-dd HH:mm:ss');
-  const operationalDate = subHours(new Date(`${localDateTime.replace(' ', 'T')}Z`), OPERATIONAL_DAY_START_HOUR);
-  return new Date(`${operationalDate.toISOString().slice(0, 10)}T00:00:00.000Z`);
 }
 
 export function isTimeWithinRange(time: string, start: string, end: string): boolean {

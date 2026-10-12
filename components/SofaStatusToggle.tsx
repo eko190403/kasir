@@ -20,11 +20,7 @@ export default function SofaStatusToggle({
   const handleStatusChange = async (e: React.ChangeEvent<HTMLSelectElement>) => {
     const newStatus = e.target.value as SofaStatus
     try {
-      const result = await setSofaStatus(sofaId, newStatus)
-      if (!result.success) {
-        toast.warning(result.message)
-        return
-      }
+      await setSofaStatus(sofaId, newStatus)
       router.refresh()
     } catch (err: any) {
       toast.error(err.message)

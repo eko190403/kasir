@@ -121,7 +121,6 @@ export default function BillClient({
       const result = await addMenuItemToBill(billId, menuId, 1, catatan)
       setBillItems(items => [...items, result.item])
       setCurrentTotals(result.totals)
-      setUangDiterima(String(result.totals.total))
       setCatatan("")
     } catch (err: any) {
       toast.error(err.message)

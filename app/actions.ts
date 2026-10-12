@@ -449,9 +449,6 @@ export async function addMenuItemToBill(billId: string, menuItemId: string, qty:
     throw new Error("Promo happy hour hanya tersedia pukul 21.00–23.00 WIB.")
   }
 
-  const settings = await prisma.setting.findMany({
-    where: { kunci: { in: ['HAPPY_HOUR_AKTIF', 'HAPPY_HOUR_MULAI', 'HAPPY_HOUR_SELESAI', 'HAPPY_HOUR_DISKON'] } }
-  })
   const getSetting = (k: string, fb: string) => settings.find(s => s.kunci === k)?.nilai || fb
   const hhAktif = getSetting('HAPPY_HOUR_AKTIF', 'false') === 'true'
   const hhMulai = getSetting('HAPPY_HOUR_MULAI', '17:00')
@@ -471,11 +468,11 @@ export async function addMenuItemToBill(billId: string, menuItemId: string, qty:
     }
   }
 
-  await withSerializableRetry(async (tx) => {
+  const { item, totals } = await withSerializableRetry(async (tx) => {
     const bill = await assertBillAccessForSession(tx, billId, session)
     if (bill.status !== "TERBUKA") throw new Error("Pesanan hanya dapat ditambahkan ke bill yang masih terbuka.")
 
-    await tx.billItem.create({
+    const item = await tx.billItem.create({
       data: {
         billId,
         menuItemId,
@@ -490,7 +487,8 @@ export async function addMenuItemToBill(billId: string, menuItemId: string, qty:
         status: "DIKIRIM"
       }
     })
-    await calculateBillTotalInTransaction(tx, billId)
+    const totals = await calculateBillTotalInTransaction(tx, billId)
+    return { item, totals }
   })
   revalidatePath(`/`)
   return { item, totals }
