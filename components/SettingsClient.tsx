@@ -13,8 +13,8 @@ export default function SettingsClient({ settings }: { settings: { kunci: string
   const [pajak, setPajak] = useState(getVal('PAJAK'))
   const [serviceCharge, setServiceCharge] = useState(getVal('SERVICE_CHARGE'))
   const [pembulatan, setPembulatan] = useState(getVal('PEMBULATAN_RATUSAN'))
-  const [namaBar, setNamaBar] = useState(getVal('NAMA_BAR') || 'Bar POS')
-  const [alamatBar, setAlamatBar] = useState(getVal('ALAMAT_BAR') || '')
+  const [namaBar, setNamaBar] = useState(getVal('NAMA_BAR') || 'Superbar')
+  const [alamatBar, setAlamatBar] = useState(getVal('ALAMAT_BAR') || 'Jl. Gatot Subroto Barat No.317 Pemecutan Kaja, North Denpasar')
   const [pinLama, setPinLama] = useState('')
   const [pinBaru, setPinBaru] = useState('')
   const [pinKonfirmasi, setPinKonfirmasi] = useState('')
@@ -40,7 +40,7 @@ export default function SettingsClient({ settings }: { settings: { kunci: string
 
   const handleGantiPin = async () => {
     setPinError('')
-    if (!pinBaru || pinBaru.length < 4) { setPinError('PIN baru minimal 4 digit'); return }
+    if (!/^\d{4,6}$/.test(pinBaru)) { setPinError('PIN baru harus 4–6 digit'); return }
     if (pinBaru !== pinKonfirmasi) { setPinError('PIN baru dan konfirmasi tidak cocok'); return }
     if (!pinLama) { setPinError('PIN lama harus diisi'); return }
     setLoading(true)
@@ -87,7 +87,7 @@ export default function SettingsClient({ settings }: { settings: { kunci: string
         <h3 className="font-bold">Pajak (%)</h3>
         <p className="text-xs text-zinc-400">Persentase pajak yang diterapkan pada setiap bill.</p>
         <div className="flex gap-2">
-          <input type="number" min="0" max="100" value={pajak} onChange={e => setPajak(e.target.value)}
+          <input type="number" min="0" max="100" step="any" value={pajak} onChange={e => setPajak(e.target.value)}
             className="flex-1 bg-zinc-800 border border-zinc-700 rounded-lg p-2 text-sm focus:outline-none focus:border-emerald-500" />
           <button onClick={() => handleSave('PAJAK', pajak)} disabled={loading} className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 rounded-lg text-sm font-bold">Simpan</button>
         </div>
@@ -98,7 +98,7 @@ export default function SettingsClient({ settings }: { settings: { kunci: string
         <h3 className="font-bold">Service Charge (%)</h3>
         <p className="text-xs text-zinc-400">Persentase biaya layanan.</p>
         <div className="flex gap-2">
-          <input type="number" min="0" max="100" value={serviceCharge} onChange={e => setServiceCharge(e.target.value)}
+          <input type="number" min="0" max="100" step="any" value={serviceCharge} onChange={e => setServiceCharge(e.target.value)}
             className="flex-1 bg-zinc-800 border border-zinc-700 rounded-lg p-2 text-sm focus:outline-none focus:border-emerald-500" />
           <button onClick={() => handleSave('SERVICE_CHARGE', serviceCharge)} disabled={loading} className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 rounded-lg text-sm font-bold">Simpan</button>
         </div>
@@ -153,11 +153,11 @@ export default function SettingsClient({ settings }: { settings: { kunci: string
       {/* Ganti PIN Manajer */}
       <div className="bg-zinc-900 border border-amber-800/40 p-5 rounded-xl space-y-3">
         <h3 className="font-bold text-amber-400">🔐 Ganti PIN Manajer</h3>
-        <p className="text-xs text-zinc-400">PIN ini digunakan untuk otorisasi Void dan Comp. Default awal: <code className="bg-zinc-800 px-1 rounded">123456</code></p>
+        <p className="text-xs text-zinc-400">PIN akun manajer digunakan untuk otorisasi sensitif. Gunakan PIN 4–6 digit dan jangan membagikannya.</p>
         <div className="space-y-2">
           <input type="password" placeholder="PIN Lama" value={pinLama} onChange={e => setPinLama(e.target.value)}
             className="w-full bg-zinc-800 border border-zinc-700 rounded-lg p-2 text-sm focus:outline-none focus:border-amber-500" />
-          <input type="password" placeholder="PIN Baru (min 4 digit)" value={pinBaru} onChange={e => setPinBaru(e.target.value)}
+          <input type="password" inputMode="numeric" maxLength={6} placeholder="PIN Baru (4–6 digit)" value={pinBaru} onChange={e => setPinBaru(e.target.value)}
             className="w-full bg-zinc-800 border border-zinc-700 rounded-lg p-2 text-sm focus:outline-none focus:border-amber-500" />
           <input type="password" placeholder="Konfirmasi PIN Baru" value={pinKonfirmasi} onChange={e => setPinKonfirmasi(e.target.value)}
             className="w-full bg-zinc-800 border border-zinc-700 rounded-lg p-2 text-sm focus:outline-none focus:border-amber-500" />

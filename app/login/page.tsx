@@ -50,7 +50,11 @@ export default function LoginPage() {
       if (res?.error) {
         setError(res.error)
       } else if (res?.success) {
-        router.push("/")
+        const requestedPath = new URLSearchParams(window.location.search).get("next")
+        const destination = requestedPath?.startsWith("/") && !requestedPath.startsWith("//") && !requestedPath.startsWith("/login")
+          ? requestedPath
+          : "/"
+        router.replace(destination)
       }
     } catch {
       setError("Terjadi kesalahan sistem")
@@ -73,7 +77,7 @@ export default function LoginPage() {
           <div className="w-16 h-16 bg-amber-500/10 rounded-full flex items-center justify-center mb-4">
             <KeyRound className="w-8 h-8 text-amber-400" />
           </div>
-          <h1 className="text-2xl font-bold text-white">Kasir Bar</h1>
+          <h1 className="text-2xl font-bold text-white">Superbar</h1>
           <p className="text-zinc-500 text-sm mt-1">Point of Sale System</p>
         </div>
 

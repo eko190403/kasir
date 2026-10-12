@@ -1,19 +1,25 @@
 "use client"
 
 import { useState, useEffect, useCallback } from "react"
-import { addMenuItemToBill, closeBill, returnItem, applyDiscount, voidItem, compItem, updateItemQty, cancelBill } from "@/app/actions"
+import { addMenuItemToBill, closeBill, returnItem, applyDiscount, voidItem, compItem, updateItemQty, cancelBill, applyReservationDeposit, confirmPayment } from "@/app/actions"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
+import { getHappyHourOriginalPrice, isHappyHourMenuName } from "@/lib/menu-catalog"
+import { isTimeWithinRange } from "@/lib/timezone"
 
 export default function BillClient({ 
   billId, 
   menuItems,
   initialBillItems,
+  initialPayments,
+  depositReservasis,
   totals
 }: { 
   billId: string,  
   menuItems: any[],
   initialBillItems: any[],
+  initialPayments: any[],
+  depositReservasis: any[],
   totals: any
 }) {
   const router = useRouter()
@@ -28,9 +34,23 @@ export default function BillClient({
   const [showCancel, setShowCancel] = useState(false)
   const [cancelPin, setCancelPin] = useState("")
   const [cancelAlasan, setCancelAlasan] = useState("")
-  const [paymentMethod, setPaymentMethod] = useState("TUNAI")
-  const [splitWays, setSplitWays] = useState(1)
-  const [uangDiterima, setUangDiterima] = useState(totals.total.toString())
+  const [paymentMethod, setPaymentMethod] = useState<"TUNAI" | "KARTU" | "QRIS" | "DEBIT" | "TRANSFER" | "SPLIT">("TUNAI")
+  const [splitCash, setSplitCash] = useState("")
+  const [splitCard, setSplitCard] = useState("")
+  const [splitQris, setSplitQris] = useState("")
+  const [splitDebit, setSplitDebit] = useState("")
+  const [splitTransfer, setSplitTransfer] = useState("")
+  const [uangDiterimaInput, setUangDiterimaInput] = useState<{ amount: string; due: number } | null>(null)
+  const [legacyDepositMetode, setLegacyDepositMetode] = useState<"TUNAI" | "KARTU" | "QRIS" | "DEBIT" | "TRANSFER">("TUNAI")
+  const totalSudahDibayar = initialPayments
+    .filter(payment => payment.status !== 'PENDING' && payment.status !== 'GAGAL' && payment.status !== 'BATAL')
+    .reduce((sum, payment) => sum + payment.jumlah, 0)
+  const jumlahPending = initialPayments.filter(payment => payment.status === 'PENDING').length
+  const sudahLunas = totalSudahDibayar >= totals.total
+  const sisaPembayaran = Math.max(0, totals.total - totalSudahDibayar)
+  const uangDiterima = uangDiterimaInput?.due === sisaPembayaran
+    ? uangDiterimaInput.amount
+    : sisaPembayaran.toString()
 
   // Discount State
   const [showDiscount, setShowDiscount] = useState(false)
@@ -111,28 +131,106 @@ export default function BillClient({
   }
 
   const handleClose = async () => {
-    const totalTagihan = Number(currentTotals.total) || 0
-    const terima = paymentMethod === 'TUNAI' ? (parseInt(uangDiterima) || 0) : totalTagihan
-    const kembali = paymentMethod === 'TUNAI' ? Math.max(0, terima - totalTagihan) : 0
-
-    if (totalTagihan <= 0) {
-      toast.warning('Tagihan sudah 0, tidak perlu pembayaran.')
+    if (jumlahPending > 0) {
+      toast.info('Konfirmasi pembayaran yang masih pending sebelum membuat pembayaran baru atau menutup bill.')
       return
     }
 
-    if (paymentMethod === 'TUNAI' && terima < totalTagihan) {
-      toast.error('Uang yang dibayar kurang dari total tagihan!')
+    const totalTagihan = sisaPembayaran
+    const paymentEntries = paymentMethod === "SPLIT"
+      ? [
+        { metode: "TUNAI" as const, jumlah: Number(splitCash) || 0, status: "SUDAH_BAYAR" as const },
+        { metode: "KARTU" as const, jumlah: Number(splitCard) || 0, status: "SUDAH_BAYAR" as const },
+        { metode: "QRIS" as const, jumlah: Number(splitQris) || 0, status: "PENDING" as const },
+        { metode: "DEBIT" as const, jumlah: Number(splitDebit) || 0, status: "PENDING" as const },
+        { metode: "TRANSFER" as const, jumlah: Number(splitTransfer) || 0, status: "PENDING" as const },
+      ].filter(payment => payment.jumlah > 0)
+      : totalTagihan > 0
+        ? [{
+            metode: paymentMethod,
+            jumlah: totalTagihan,
+            status: (paymentMethod === "QRIS" || paymentMethod === "DEBIT" || paymentMethod === "TRANSFER") ? "PENDING" as const : "SUDAH_BAYAR" as const
+          }]
+        : []
+
+    const paymentEntriesWithStatus = paymentEntries.map(payment => ({
+      ...payment,
+      status: payment.metode === "TUNAI" || payment.metode === "KARTU" ? "SUDAH_BAYAR" as const : "PENDING" as const
+    }))
+
+    const totalAlokasi = paymentEntriesWithStatus.reduce((sum, payment) => sum + payment.jumlah, 0)
+    if (totalAlokasi !== totalTagihan) {
+      toast.error("Alokasi pembayaran harus sama dengan sisa tagihan.")
+      return
+    }
+    const alokasiTunai = paymentEntriesWithStatus
+      .filter(payment => payment.metode === "TUNAI")
+      .reduce((sum, payment) => sum + payment.jumlah, 0)
+    const terima = alokasiTunai > 0 ? (Number(uangDiterima) || 0) : undefined
+
+    if (alokasiTunai > 0 && (terima ?? 0) < alokasiTunai) {
+      toast.error('Uang tunai yang diterima kurang dari alokasi tunai.')
       return
     }
 
-    if (!confirm(`Yakin menyelesaikan pembayaran sebesar Rp ${totalTagihan.toLocaleString('id-ID')}?`)) return
+    const requiresManualConfirmation = paymentEntriesWithStatus.some(payment => payment.status === 'PENDING')
+    const confirmationPrompt = requiresManualConfirmation
+      ? `Pembayaran non-tunai akan dicatat menunggu konfirmasi. Setelah bukti transfer/QRIS masuk, konfirmasi di daftar pembayaran sebelum menutup bill.`
+      : totalTagihan === 0
+        ? 'Pembayaran sudah mencukupi. Tutup bill dan cetak struk?'
+        : `Yakin menyelesaikan pembayaran sisa sebesar Rp ${totalTagihan.toLocaleString('id-ID')}?`
+
+    if (!confirm(confirmationPrompt)) return
 
     setLoading(true)
     try {
-      const normalizedMethod = splitWays > 1 ? `SPLIT (${paymentMethod})` : paymentMethod
-      await closeBill(billId, normalizedMethod, terima)
-      window.open(`/print/receipt/${billId}?diterima=${terima}&kembali=${kembali}&metode=${encodeURIComponent(paymentMethod)}`, '_blank')
+      const result = await closeBill(billId, paymentMethod, terima, paymentEntriesWithStatus)
+      if (result?.status === 'PENDING_CONFIRMATION') {
+        toast.info('Pembayaran non-tunai tersimpan menunggu konfirmasi kasir.')
+        router.refresh()
+        return
+      }
+      window.open(`/print/receipt/${billId}`, '_blank')
       router.push('/')
+    } catch (err: any) {
+      toast.error(err.message)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleConfirmPendingPayment = async (paymentId: string) => {
+    setLoading(true)
+    try {
+      const result = await confirmPayment(paymentId)
+      if (result.closed) {
+        toast.success('Pembayaran lunas. Bill ditutup dan meja dikosongkan.')
+        window.open(`/print/receipt/${billId}`, '_blank')
+        router.push('/')
+        return
+      }
+
+      toast.success('Pembayaran berhasil dikonfirmasi. Masih ada sisa tagihan.')
+      router.refresh()
+    } catch (err: any) {
+      toast.error(err.message)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleApplyReservationDeposit = async (reservasiId: string) => {
+    const reservation = depositReservasis.find(item => item.id === reservasiId)
+    if (!reservation) return
+    setLoading(true)
+    try {
+      await applyReservationDeposit(
+        billId,
+        reservasiId,
+        reservation.depositMetode ?? legacyDepositMetode
+      )
+      toast.success("Deposit reservasi diterapkan ke bill.")
+      router.refresh()
     } catch (err: any) {
       toast.error(err.message)
     } finally {
@@ -200,21 +298,15 @@ export default function BillClient({
     }
   }
 
-  // Calculate splits
-  const calculateSplits = () => {
-    const splits = []
-    const base = Math.floor(currentTotals.total / splitWays)
-    let remainder = currentTotals.total % splitWays
-    for(let i=0; i<splitWays; i++) {
-      splits.push(base + (remainder > 0 ? 1 : 0))
-      remainder--
-    }
-    return splits
-  }
-
   const filteredMenu = menuFilter === "SEMUA" 
     ? menuItems 
     : menuItems.filter(i => i.kategori === menuFilter)
+  const jakartaTime = new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Asia/Jakarta",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23"
+  }).format(new Date())
 
   return (
     <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -245,17 +337,28 @@ export default function BillClient({
 
           <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
             {filteredMenu.map(item => (
-              <button 
-                key={item.id}
-                onClick={() => handleAddItem(item.id)}
-                disabled={!item.tersedia || loading}
-                className="bg-zinc-800 hover:bg-zinc-700 disabled:opacity-40 border border-zinc-700 p-4 rounded-xl text-left transition relative"
-              >
-                <div className="font-semibold">{item.nama}</div>
-                <div className="text-emerald-400 mt-1 font-medium text-sm">Rp {item.harga.toLocaleString('id-ID')}</div>
-                <span className={`absolute top-2 right-2 w-2 h-2 rounded-full ${item.tersedia ? 'bg-emerald-400' : 'bg-red-500'}`} />
-                {!item.tersedia && <div className="text-red-400 text-xs mt-1 font-bold">HABIS</div>}
-              </button>
+              (() => {
+                const isHappyHourItem = isHappyHourMenuName(item.nama)
+                const happyHourAvailable = isHappyHourItem && isTimeWithinRange(jakartaTime, "21:00", "23:00")
+                const originalPrice = isHappyHourItem ? getHappyHourOriginalPrice(item.nama) : null
+                return (
+                  <button 
+                    key={item.id}
+                    onClick={() => handleAddItem(item.id)}
+                    disabled={!item.tersedia || loading || (isHappyHourItem && !happyHourAvailable)}
+                    className="bg-zinc-800 hover:bg-zinc-700 disabled:opacity-40 border border-zinc-700 p-4 rounded-xl text-left transition relative"
+                  >
+                    <div className="font-semibold">{item.nama}</div>
+                    <div className="text-emerald-400 mt-1 font-medium text-sm">Rp {item.harga.toLocaleString('id-ID')}</div>
+                    {originalPrice !== null && (
+                      <div className="text-xs text-zinc-400 line-through">Rp {originalPrice.toLocaleString('id-ID')}</div>
+                    )}
+                    {isHappyHourItem && !happyHourAvailable && <div className="mt-1 text-xs text-amber-300">Tersedia 21.00–23.00 WIB</div>}
+                    <span className={`absolute top-2 right-2 w-2 h-2 rounded-full ${item.tersedia ? 'bg-emerald-400' : 'bg-red-500'}`} />
+                    {!item.tersedia && <div className="text-red-400 text-xs mt-1 font-bold">HABIS</div>}
+                  </button>
+                )
+              })()
             ))}
           </div>
         </div>
@@ -281,7 +384,9 @@ export default function BillClient({
               return (
               <div key={item.id} className={`flex flex-col text-sm border-b border-zinc-800/50 pb-2 ${dicoret ? 'opacity-40' : ''}`}>
                 <div className="flex justify-between font-medium">
-                  <span className={dicoret ? 'line-through' : ''}>{item.namaItem}</span>
+                  <span className={dicoret ? 'line-through' : ''}>
+                    {item.namaItem}{item.isHappyHour ? <span className="ml-1 text-[10px] text-amber-400">(HH)</span> : null}
+                  </span>
                   <span className={dicoret ? 'line-through text-zinc-500' : ''}>Rp {(item.harga * item.qty).toLocaleString('id-ID')}</span>
                 </div>
                 {item.catatan && (
@@ -378,10 +483,82 @@ export default function BillClient({
             <span>Pajak</span>
             <span>Rp {currentTotals.pajak.toLocaleString('id-ID')}</span>
           </div>
+          {totals.pembulatan !== 0 && (
+            <div className="flex justify-between text-zinc-400">
+              <span>Pembulatan</span>
+              <span>Rp {totals.pembulatan.toLocaleString('id-ID')}</span>
+            </div>
+          )}
           <div className="flex justify-between font-bold text-lg text-emerald-400 pt-2 border-t border-zinc-800 mt-2">
             <span>Total</span>
             <span>Rp {currentTotals.total.toLocaleString('id-ID')}</span>
           </div>
+          {initialPayments.length > 0 && (
+            <div className="space-y-2 border-t border-zinc-800 pt-2">
+              {jumlahPending > 0 && (
+                <div className="rounded-lg border border-amber-900/60 bg-amber-950/20 p-2 space-y-2">
+                  <div className="text-[10px] font-bold uppercase tracking-wide text-amber-300">Menunggu konfirmasi</div>
+                  {initialPayments.filter(payment => payment.status === 'PENDING').map((payment, index) => (
+                    <div key={`${payment.id ?? payment.metode}-${index}`} className="flex items-center justify-between gap-2 text-xs text-zinc-200">
+                      <span>{payment.metode} · Rp {payment.jumlah.toLocaleString('id-ID')}</span>
+                      <button
+                        onClick={() => handleConfirmPendingPayment(payment.id)}
+                        className="rounded bg-amber-600 px-2 py-1 font-bold text-white disabled:opacity-50"
+                        disabled={loading}
+                      >
+                        Konfirmasi
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {initialPayments.map((payment, index) => (
+                <div key={`${payment.id ?? payment.metode}-${index}`} className="flex justify-between text-xs text-zinc-400">
+                  <span>{payment.referensi || `Pembayaran awal (${payment.metode})`}{payment.status === 'PENDING' ? ' · Menunggu konfirmasi' : ''}</span>
+                  <span>- Rp {payment.jumlah.toLocaleString('id-ID')}</span>
+                </div>
+              ))}
+              <div className="flex justify-between font-bold text-amber-300">
+                <span>Sisa Tagihan</span>
+                <span>Rp {sisaPembayaran.toLocaleString('id-ID')}</span>
+              </div>
+            </div>
+          )}
+          {depositReservasis.length > 0 && (
+            <div className="space-y-2 rounded-lg border border-blue-900/60 bg-blue-950/20 p-3">
+              <h4 className="text-xs font-bold text-blue-200">Deposit Reservasi</h4>
+              {depositReservasis.some(reservation => !reservation.depositMetode) && (
+                <label className="flex items-center gap-2 text-xs text-zinc-300">
+                  Metode deposit lama
+                  <select
+                    value={legacyDepositMetode}
+                    onChange={event => setLegacyDepositMetode(event.target.value as "TUNAI" | "KARTU" | "QRIS" | "DEBIT" | "TRANSFER")}
+                    className="ml-auto rounded border border-zinc-700 bg-zinc-800 p-1"
+                  >
+                    <option value="TUNAI">Tunai</option>
+                    <option value="KARTU">Kartu</option>
+                    <option value="QRIS">QRIS</option>
+                    <option value="DEBIT">Debit</option>
+                    <option value="TRANSFER">Transfer</option>
+                  </select>
+                </label>
+              )}
+              {depositReservasis.map(reservation => (
+                <div key={reservation.id} className="flex flex-wrap items-center justify-between gap-2 text-xs">
+                  <span className="text-zinc-300">
+                    {reservation.nama} · {new Date(reservation.jam).toLocaleString('id-ID')} · Rp {reservation.deposit.toLocaleString('id-ID')}
+                  </span>
+                  <button
+                    onClick={() => handleApplyReservationDeposit(reservation.id)}
+                    disabled={loading || reservation.deposit > sisaPembayaran}
+                    className="rounded bg-blue-700 px-2 py-1 font-bold text-white disabled:opacity-50"
+                  >
+                    Terapkan deposit
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
 
           {!showPayment && !showCancel ? (
             <>
@@ -398,10 +575,10 @@ export default function BillClient({
                 </button>
                 <button 
                   onClick={() => setShowPayment(true)}
-                  disabled={loading || billItems.length === 0}
+                  disabled={loading || initialBillItems.length === 0 || jumlahPending > 0}
                   className="flex-1 bg-amber-600 hover:bg-amber-500 text-white font-bold py-3 rounded-lg disabled:opacity-50 transition flex items-center justify-center gap-2"
                 >
-                  Bayar (Checkout)
+                  {jumlahPending > 0 ? 'Menunggu Konfirmasi' : sudahLunas ? 'Tutup Bill' : 'Bayar (Checkout)'}
                   <span className="text-xs bg-amber-800/70 px-1.5 py-0.5 rounded font-mono">F2</span>
                 </button>
               </div>
@@ -444,10 +621,16 @@ export default function BillClient({
             </div>
           ) : (
             <div className="mt-4 p-4 border border-zinc-700 bg-zinc-900 rounded-lg space-y-4">
+              {sisaPembayaran === 0 ? (
+                <p className="rounded-lg border border-emerald-800 bg-emerald-950/30 p-3 text-sm text-emerald-300">
+                  Pembayaran sudah menutup seluruh tagihan. Konfirmasi untuk menyelesaikan bill.
+                </p>
+              ) : (
+              <>
               <div>
                 <label className="text-xs text-zinc-400">Metode Pembayaran</label>
                 <div className="flex gap-2 mt-1">
-                  {["TUNAI", "KARTU", "QRIS"].map(m => (
+                  {(["TUNAI", "KARTU", "QRIS", "DEBIT", "TRANSFER", "SPLIT"] as const).map(m => (
                     <button 
                       key={m} 
                       onClick={() => setPaymentMethod(m)}
@@ -459,51 +642,62 @@ export default function BillClient({
                 </div>
               </div>
               
-              <div>
-                <label className="text-xs text-zinc-400">Split Bill (Dibagi Rata)</label>
-                <div className="flex items-center gap-4 mt-1">
-                  <input 
-                    type="range" min="1" max="10" 
-                    value={splitWays} 
-                    onChange={e => setSplitWays(parseInt(e.target.value))}
-                    className="flex-1"
-                  />
-                  <span className="font-bold">{splitWays} Orang</span>
-                </div>
-              </div>
-
-              {splitWays > 1 && (
-                <div className="text-xs text-zinc-300 space-y-1 pt-2 border-t border-zinc-800">
-                  {calculateSplits().map((amt, idx) => (
-                    <div key={idx} className="flex justify-between">
-                      <span>Orang ke-{idx+1}</span>
-                      <span className="text-emerald-400">Rp {amt.toLocaleString('id-ID')}</span>
-                    </div>
+              {paymentMethod === "SPLIT" && (
+                <div className="space-y-2 border-t border-zinc-800 pt-3">
+                  <p className="text-xs text-zinc-400">Masukkan alokasi sisa nominal per metode. Total harus sama dengan sisa tagihan.</p>
+                  {[
+                    { label: "Tunai", value: splitCash, setValue: setSplitCash },
+                    { label: "Kartu", value: splitCard, setValue: setSplitCard },
+                    { label: "QRIS", value: splitQris, setValue: setSplitQris },
+                    { label: "Debit", value: splitDebit, setValue: setSplitDebit },
+                    { label: "Transfer", value: splitTransfer, setValue: setSplitTransfer },
+                  ].map(({ label, value, setValue }) => (
+                    <label key={label} className="flex items-center gap-3 text-xs text-zinc-300">
+                      <span className="w-16">{label}</span>
+                      <input
+                        type="number"
+                        min="0"
+                        step="1"
+                        value={value}
+                        onChange={event => setValue(event.target.value)}
+                        className="min-w-0 flex-1 rounded-lg border border-zinc-700 bg-zinc-800 p-2 text-sm"
+                      />
+                    </label>
                   ))}
+                  <div className="flex justify-between text-xs">
+                    <span className="text-zinc-400">Sisa alokasi</span>
+                    <span className={sisaPembayaran - (Number(splitCash || 0) + Number(splitCard || 0) + Number(splitQris || 0) + Number(splitDebit || 0) + Number(splitTransfer || 0)) === 0 ? "text-emerald-400" : "text-amber-400"}>
+                      Rp {(sisaPembayaran - (Number(splitCash || 0) + Number(splitCard || 0) + Number(splitQris || 0) + Number(splitDebit || 0) + Number(splitTransfer || 0))).toLocaleString("id-ID")}
+                    </span>
+                  </div>
                 </div>
               )}
 
-              {paymentMethod === "TUNAI" && (
+              {(paymentMethod === "TUNAI" || (paymentMethod === "SPLIT" && Number(splitCash) > 0)) && (
                 <div className="border-t border-zinc-800 pt-2">
                   <label className="text-xs text-zinc-400">Uang Diterima (Rp)</label>
                   <input 
-                    type="number" min={currentTotals.total}
+                    type="number" min={paymentMethod === "TUNAI" ? sisaPembayaran : Number(splitCash) || 0}
                     value={uangDiterima}
-                    onChange={e => setUangDiterima(e.target.value)}
+                    onChange={e => setUangDiterimaInput({ amount: e.target.value, due: sisaPembayaran })}
                     className="w-full bg-zinc-800 border border-zinc-700 rounded-lg p-2 mt-1 focus:outline-none focus:border-emerald-500"
                   />
-                  {parseInt(uangDiterima) >= currentTotals.total && (
+                  {Number(uangDiterima) >= (paymentMethod === "TUNAI" ? sisaPembayaran : Number(splitCash) || 0) && (
                     <div className="flex justify-between mt-2 text-sm">
                       <span className="text-zinc-400">Kembalian</span>
-                      <span className="font-bold text-emerald-400">Rp {(parseInt(uangDiterima) - currentTotals.total).toLocaleString('id-ID')}</span>
+                      <span className="font-bold text-emerald-400">Rp {(Number(uangDiterima) - (paymentMethod === "TUNAI" ? sisaPembayaran : Number(splitCash) || 0)).toLocaleString('id-ID')}</span>
                     </div>
                   )}
                 </div>
               )}
+              </>
+              )}
 
               <div className="flex gap-2 pt-2">
                 <button onClick={() => setShowPayment(false)} className="px-4 py-2 bg-zinc-700 rounded-lg text-sm">Batal</button>
-                <button onClick={handleClose} disabled={loading} className="flex-1 bg-amber-600 hover:bg-amber-500 text-white font-bold rounded-lg text-sm py-2">Konfirmasi Lunas</button>
+                <button onClick={handleClose} disabled={loading || jumlahPending > 0} className="flex-1 bg-amber-600 hover:bg-amber-500 text-white font-bold rounded-lg text-sm py-2">
+                  {sisaPembayaran === 0 ? 'Tutup Bill & Cetak Struk' : 'Konfirmasi Pembayaran'}
+                </button>
               </div>
             </div>
           )}

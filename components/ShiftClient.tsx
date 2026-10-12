@@ -4,17 +4,70 @@ import { useState } from "react"
 import { openShift, closeShift, catatPengeluaran } from "@/app/actions"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
-import type { Shift, User } from "@prisma/client"
+import type { Payment, Shift, User } from "@prisma/client"
 
-type ShiftWithCashier = Shift & { kasir: User | null }
+type ShiftBill = {
+  total: number
+  metodeBayar: string | null
+  payments: Pick<Payment, "metode" | "jumlah" | "status">[]
+}
+type ShiftWithCashier = Shift & { kasir: User | null; bills: ShiftBill[] }
+type ShiftPaymentSummary = Record<"TUNAI" | "KARTU" | "QRIS" | "DEBIT" | "TRANSFER", number> & {
+  legacySplitUnallocated: number
+}
+
+function getShiftPaymentSummary(bills: ShiftBill[]) {
+  const summary: ShiftPaymentSummary = {
+    TUNAI: 0,
+    KARTU: 0,
+    QRIS: 0,
+    DEBIT: 0,
+    TRANSFER: 0,
+    legacySplitUnallocated: 0,
+  }
+
+  for (const bill of bills) {
+    if (bill.payments.length > 0) {
+      for (const payment of bill.payments) {
+        if (payment.status === "SUDAH_BAYAR") {
+          summary[payment.metode] += payment.jumlah
+        }
+      }
+      continue
+    }
+
+    const method = (bill.metodeBayar ?? "TUNAI").trim().toUpperCase()
+    if (method === "SPLIT" || method.startsWith("SPLIT (")) {
+      summary.legacySplitUnallocated += bill.total
+    } else if (method === "CASH") {
+      summary.TUNAI += bill.total
+    } else {
+      switch (method) {
+        case "TUNAI":
+        case "KARTU":
+        case "QRIS":
+        case "DEBIT":
+        case "TRANSFER":
+          summary[method] += bill.total
+          break
+        default:
+          summary.legacySplitUnallocated += bill.total
+      }
+    }
+  }
+
+  return summary
+}
 
 function getErrorMessage(error: unknown, fallback: string) {
   return error instanceof Error ? error.message : fallback
 }
 
-export default function ShiftClient({ shifts, users }: {
+export default function ShiftClient({ shifts, users, currentRole, currentUserId }: {
   shifts: ShiftWithCashier[]
   users: Pick<User, "id" | "nama" | "peran">[]
+  currentRole: "MANAJER" | "KASIR"
+  currentUserId: string
 }) {
   const router = useRouter()
   const [showForm, setShowForm] = useState(false)
@@ -26,11 +79,12 @@ export default function ShiftClient({ shifts, users }: {
   const [pendingCloseId, setPendingCloseId] = useState<string | null>(null)
 
   const handleOpen = async () => {
-    if (!kasirId) { toast.warning("Pilih kasir dulu"); return }
+    if (currentRole === "MANAJER" && !kasirId) { toast.warning("Pilih kasir dulu"); return }
     setLoading(true)
     try {
-      await openShift(kasirId, kasAwal)
-      toast.success(`Shift dibuka untuk ${users.find(u => u.id === kasirId)?.nama || 'kasir'}!`)
+      const targetKasirId = currentRole === "KASIR" ? currentUserId : kasirId
+      await openShift(targetKasirId, kasAwal)
+      toast.success(`Shift dibuka untuk ${users.find(u => u.id === targetKasirId)?.nama || 'kasir'}!`)
       setShowForm(false)
       setKasirId('')
       setKasAwal(0)
@@ -57,7 +111,7 @@ export default function ShiftClient({ shifts, users }: {
 
     const countedCash = Number(kasHitung)
     if (!Number.isSafeInteger(countedCash) || countedCash < 0) {
-      toast.warning("Masukkan kas fisik berupa rupiah bulat dan tidak negatif.")
+      toast.warning("Masukkan jumlah kas fisik berupa rupiah bulat dan tidak negatif.")
       return
     }
 
@@ -116,14 +170,14 @@ export default function ShiftClient({ shifts, users }: {
       ) : (
         <div className="bg-zinc-900 border border-zinc-800 p-5 rounded-xl space-y-4 max-w-md">
           <h2 className="font-bold text-lg">Buka Shift</h2>
-          <div>
+          {currentRole === "MANAJER" && <div>
             <label className="text-xs text-zinc-400">Kasir</label>
             <select value={kasirId} onChange={e => setKasirId(e.target.value)}
               className="w-full bg-zinc-800 border border-zinc-700 rounded-lg p-2 text-sm mt-1 focus:outline-none focus:border-emerald-500">
               <option value="">Pilih Kasir</option>
               {users.filter(u => u.peran === 'KASIR').map(u => <option key={u.id} value={u.id}>{u.nama}</option>)}
             </select>
-          </div>
+          </div>}
           <div>
             <label className="text-xs text-zinc-400">Kas Awal (Rp)</label>
             <input type="number" min="0" value={kasAwal} onChange={e => setKasAwal(parseInt(e.target.value) || 0)}
@@ -202,6 +256,44 @@ export default function ShiftClient({ shifts, users }: {
           <div className="bg-zinc-900 border border-zinc-700 p-5 rounded-xl space-y-4 w-full max-w-sm">
             <h3 className="font-bold text-lg">Konfirmasi Tutup Shift</h3>
             <p className="text-sm text-zinc-300">Tutup shift memerlukan otorisasi manager. Masukkan PIN manager untuk melanjutkan.</p>
+            {(() => {
+              const shift = activeShifts.find(item => item.id === pendingCloseId)
+              if (!shift) return null
+              const paymentSummary = getShiftPaymentSummary(shift.bills)
+              const cashExpected = shift.kasAwal + paymentSummary.TUNAI - shift.pengeluaran
+              const nonCashMethods = ["KARTU", "QRIS", "DEBIT", "TRANSFER"] as const
+              const nonCashTotal = nonCashMethods.reduce((sum, method) => sum + paymentSummary[method], 0)
+
+              return (
+                <div className="space-y-2 rounded-lg border border-zinc-700 bg-zinc-950 p-3 text-sm">
+                  <div className="flex justify-between font-semibold">
+                    <span>Kas tunai seharusnya</span>
+                    <span>Rp {cashExpected.toLocaleString("id-ID")}</span>
+                  </div>
+                  <p className="text-xs text-zinc-400">
+                    Kas awal + penjualan tunai − kas keluar. Hitung dan masukkan hanya uang fisik di laci.
+                  </p>
+                  <div className="border-t border-zinc-800 pt-2">
+                    <div className="mb-1 text-xs font-bold text-zinc-300">Non-tunai tercatat (tidak masuk laci)</div>
+                    {nonCashMethods.map(method => (
+                      <div key={method} className="flex justify-between text-xs text-zinc-400">
+                        <span>{method}</span>
+                        <span>Rp {paymentSummary[method].toLocaleString("id-ID")}</span>
+                      </div>
+                    ))}
+                    <div className="mt-1 flex justify-between text-xs font-semibold text-zinc-300">
+                      <span>Total non-tunai</span>
+                      <span>Rp {nonCashTotal.toLocaleString("id-ID")}</span>
+                    </div>
+                    {paymentSummary.legacySplitUnallocated > 0 && (
+                      <p className="mt-2 text-xs text-amber-400">
+                        Ada pembayaran lama campuran Rp {paymentSummary.legacySplitUnallocated.toLocaleString("id-ID")} tanpa rincian metode; cek struk/laporan sebelum rekonsiliasi.
+                      </p>
+                    )}
+                  </div>
+                </div>
+              )
+            })()}
             <div>
               <label className="text-xs text-zinc-400">PIN Manager</label>
               <input type="password" inputMode="numeric" value={shiftPin} onChange={e => setShiftPin(e.target.value)}
@@ -212,7 +304,7 @@ export default function ShiftClient({ shifts, users }: {
               <input type="number" min="0" step="1" value={kasHitung}
                 onChange={e => setKasHitung(e.target.value)}
                 className="w-full bg-zinc-800 border border-zinc-700 rounded-lg p-2 text-sm mt-1 focus:outline-none focus:border-emerald-500" />
-              <p className="mt-1 text-xs text-zinc-500">Hitung uang tunai yang benar-benar ada di laci sebelum menutup shift.</p>
+              <p className="mt-1 text-xs text-zinc-500">Masukkan hanya uang fisik di laci. Jangan tambahkan QRIS, debit, transfer, atau kartu.</p>
             </div>
             <div className="flex gap-2 pt-2">
               <button onClick={() => { setPendingCloseId(null); setShiftPin('') }} className="px-4 py-2 bg-zinc-700 rounded-lg text-sm">Batal</button>
@@ -235,7 +327,7 @@ export default function ShiftClient({ shifts, users }: {
                   <th className="text-right py-2">Kas Awal</th>
                   <th className="text-right py-2">Penjualan</th>
                   <th className="text-right py-2">Kas Keluar</th>
-                  <th className="text-right py-2">Kas Fisik</th>
+                  <th className="text-right py-2">Kas Akhir</th>
                   <th className="text-right py-2">Selisih</th>
                 </tr>
               </thead>
@@ -250,10 +342,10 @@ export default function ShiftClient({ shifts, users }: {
                     <td className="py-2 text-right text-emerald-400">Rp {(s.totalPenjualan || 0).toLocaleString('id-ID')}</td>
                     <td className="py-2 text-right text-red-400" title={s.catatanPengeluaran ?? undefined}>Rp {s.pengeluaran.toLocaleString('id-ID')}</td>
                     <td className="py-2 text-right font-bold">
-                      {s.kasHitung === null ? 'Belum dihitung' : `Rp ${s.kasHitung.toLocaleString('id-ID')}`}
+                      {s.kasHitung == null ? 'Belum dihitung' : `Rp ${s.kasHitung.toLocaleString('id-ID')}`}
                     </td>
-                    <td className={`py-2 text-right font-bold ${s.selisih === null ? 'text-zinc-500' : s.selisih === 0 ? 'text-emerald-400' : 'text-amber-400'}`}>
-                      {s.selisih === null ? 'Belum dihitung' : `${s.selisih > 0 ? '+' : ''}Rp ${s.selisih.toLocaleString('id-ID')}`}
+                    <td className={`py-2 text-right font-bold ${s.selisih == null ? 'text-zinc-500' : s.selisih === 0 ? 'text-emerald-400' : 'text-amber-400'}`}>
+                      {s.selisih == null ? 'Belum dihitung' : `${s.selisih > 0 ? '+' : ''}Rp ${s.selisih.toLocaleString('id-ID')}`}
                     </td>
                   </tr>
                 ))}

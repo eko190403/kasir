@@ -27,12 +27,21 @@ function assert(condition: boolean, label: string) {
 }
 
 const TEST_PREFIX = '__TEST__'
+const TEST_BUSINESS_DATE = new Date('2099-01-01T00:00:00.000Z')
+
+async function nextTestBillNumber() {
+  const counter = await prisma.billCounter.upsert({
+    where: { businessDate: TEST_BUSINESS_DATE },
+    create: { businessDate: TEST_BUSINESS_DATE, last: 1 },
+    update: { last: { increment: 1 } }
+  })
+  return { businessDate: TEST_BUSINESS_DATE, nomorBill: counter.last }
+}
 
 async function cleanup() {
   // Hapus data test berdasarkan prefix
   await prisma.billItem.deleteMany({ where: { namaItem: { startsWith: TEST_PREFIX } } })
   await prisma.bill.deleteMany({ where: { tipe: 'TAKE_AWAY', metodeBayar: TEST_PREFIX } })
-  await prisma.auditLog.deleteMany({ where: { detail: { startsWith: TEST_PREFIX } } })
 }
 
 // ─── Tests ──────────────────────────────────────────────
@@ -89,14 +98,17 @@ async function testDataIntegrity() {
 async function testBillCreation() {
   console.log('\n📋 [2] BILL CREATION — Buat bill baru')
 
-  const sofa = await prisma.sofa.findFirst({ where: { nama: 'D1', isDeleted: false } })
+  const sofa = await prisma.sofa.findFirst({
+    where: { nama: 'D1', isDeleted: false, bills: { none: { status: 'TERBUKA' } } }
+  })
   assert(!!sofa, 'Sofa D1 ditemukan')
   if (!sofa) return
 
   // Create a test bill
+  const identity = await nextTestBillNumber()
   const bill = await prisma.bill.create({
     data: {
-      businessDate: getOperationalBusinessDate(),
+      ...identity,
       tipe: 'DINE_IN',
       sofaId: sofa.id,
       status: 'TERBUKA',
@@ -321,9 +333,10 @@ async function testCancelBill() {
   console.log('\n📋 [8] BATAL BILL — Cancel bill')
 
   // Create separate bill for cancel test
+  const identity = await nextTestBillNumber()
   const bill = await prisma.bill.create({
     data: {
-      businessDate: getOperationalBusinessDate(),
+      ...identity,
       tipe: 'TAKE_AWAY',
       status: 'TERBUKA',
       metodeBayar: TEST_PREFIX,

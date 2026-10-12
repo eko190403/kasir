@@ -16,12 +16,12 @@ enum SofaStatus {
 }
 
 model Sofa {
-  id        String      @id @default(uuid())
+  id        String     @id @default(uuid())
   nama      String
   kapasitas Int
-  status    SofaStatus  @default(KOSONG)
-  isDeleted Boolean     @default(false)
-  
+  status    SofaStatus @default(KOSONG)
+  isDeleted Boolean    @default(false)
+
   bills     Bill[]
   reservasi Reservasi[]
 }
@@ -32,12 +32,12 @@ enum MenuKategori {
 }
 
 model MenuItem {
-  id       String       @id @default(uuid())
-  nama     String
-  harga    Int
-  kategori MenuKategori
-  tersedia Boolean      @default(true)
-  isDeleted Boolean     @default(false)
+  id        String       @id @default(uuid())
+  nama      String
+  harga     Int
+  kategori  MenuKategori
+  tersedia  Boolean      @default(true)
+  isDeleted Boolean      @default(false)
 
   billItems BillItem[]
 }
@@ -54,34 +54,81 @@ enum BillStatus {
   BATAL
 }
 
-model Bill {
-  id           String     @id @default(uuid())
-  businessDate DateTime   @db.Date
-  nomorBill    Int?       // Auto-increment per hari, e.g. 1, 2, 3...
-  tipe         BillTipe
-  sofaId       String?
-  waktuBuka    DateTime   @default(now())
-  waktuTutup   DateTime?
-  createdAt    DateTime   @default(now())
-  updatedAt    DateTime   @updatedAt
-  subtotal     Int        @default(0)
-  diskon       Int        @default(0)
-  pajak        Int        @default(0)
-  pajakPct     Int        @default(0) // Snapshot %
-  service      Int        @default(0)
-  servicePct   Int        @default(0) // Snapshot %
-  total        Int        @default(0)
-  metodeBayar  String?
-  status       BillStatus @default(TERBUKA)
-  kasirId      String?
-  shiftId      String?
-  
-  sofa         Sofa?      @relation(fields: [sofaId], references: [id])
-  kasir        User?      @relation("KasirBill", fields: [kasirId], references: [id])
-  shift        Shift?     @relation(fields: [shiftId], references: [id])
-  billItems    BillItem[]
+enum MetodeBayar {
+  TUNAI
+  KARTU
+  QRIS
+  DEBIT
+  TRANSFER
+}
 
+enum PaymentStatus {
+  PENDING
+  SUDAH_BAYAR
+  GAGAL
+  BATAL
+}
+
+model BillCounter {
+  businessDate DateTime @id @db.Date
+  last         Int      @default(0)
+}
+
+model Bill {
+  id                String     @id @default(uuid())
+  businessDate      DateTime   @db.Date
+  nomorBill         Int // Auto-increment per operational day, starting at 06:00 WIB
+  tipe              BillTipe
+  sofaId            String?
+  waktuBuka         DateTime   @default(now())
+  waktuTutup        DateTime?
+  createdAt         DateTime   @default(now())
+  updatedAt         DateTime   @updatedAt
+  subtotal          Int        @default(0)
+  diskon            Int        @default(0)
+  pajak             Int        @default(0)
+  pajakPct          Float      @default(0) // Snapshot %
+  service           Int        @default(0)
+  servicePct        Float      @default(0) // Snapshot %
+  pembulatanRatusan Boolean    @default(false)
+  pembulatan        Int        @default(0)
+  total             Int        @default(0)
+  metodeBayar       String?
+  uangDiterima      Int?
+  kembalian         Int?
+  status            BillStatus @default(TERBUKA)
+  kasirId           String?
+  shiftId           String?
+
+  sofa      Sofa?      @relation(fields: [sofaId], references: [id])
+  kasir     User?      @relation("KasirBill", fields: [kasirId], references: [id])
+  shift     Shift?     @relation(fields: [shiftId], references: [id])
+  billItems BillItem[]
+  payments  Payment[]
+  reservasi Reservasi?
+
+  @@unique([businessDate, nomorBill])
   @@index([sofaId, status])
+  @@index([status, waktuBuka])
+  @@index([shiftId, status])
+  @@index([waktuTutup])
+}
+
+model Payment {
+  id               String        @id @default(uuid())
+  billId           String
+  metode           MetodeBayar
+  jumlah           Int
+  referensi        String?
+  status           PaymentStatus @default(PENDING)
+  confirmedAt      DateTime?
+  confirmedByUserId String?
+  createdAt        DateTime      @default(now())
+
+  bill Bill @relation(fields: [billId], references: [id], onDelete: Restrict)
+
+  @@index([billId])
+  @@index([billId, status])
 }
 
 enum BillItemStatus {
@@ -91,22 +138,28 @@ enum BillItemStatus {
 }
 
 model BillItem {
-  id          String         @id @default(uuid())
-  billId      String
-  menuItemId  String
-  namaItem    String
-  harga       Int
-  qty         Int
-  catatan     String?
-  status      BillItemStatus @default(DIKIRIM)
-  diretur     Boolean        @default(false)
-  isVoid      Boolean        @default(false)
-  isComp      Boolean        @default(false)
-  otorisasiOleh String?
+  id             String         @id @default(uuid())
+  billId         String
+  menuItemId     String
+  namaItem       String
+  harga          Int
+  qty            Int
+  catatan        String?
+  status         BillItemStatus @default(DIKIRIM)
+  diretur        Boolean        @default(false)
+  isVoid         Boolean        @default(false)
+  isComp         Boolean        @default(false)
+  hargaAsli      Int?
+  isHappyHour    Boolean        @default(false)
+  createdAt      DateTime       @default(now())
+  otorisasiOleh  String?
   alasanVoidComp String?
 
-  bill        Bill           @relation(fields: [billId], references: [id], onDelete: Cascade)
-  menuItem    MenuItem       @relation(fields: [menuItemId], references: [id])
+  bill     Bill     @relation(fields: [billId], references: [id], onDelete: Cascade)
+  menuItem MenuItem @relation(fields: [menuItemId], references: [id])
+
+  @@index([billId])
+  @@index([status])
 }
 
 enum ReservasiStatus {
@@ -117,32 +170,42 @@ enum ReservasiStatus {
 }
 
 model Reservasi {
-  id          String   @id @default(uuid())
-  sofaId      String
-  nama        String
-  jam         DateTime
-  jumlahOrang Int
-  deposit     Int?
-  status      ReservasiStatus @default(PENDING)
+  id            String          @id @default(uuid())
+  sofaId        String
+  nama          String
+  jam           DateTime
+  jumlahOrang   Int
+  deposit       Int?
+  depositMetode MetodeBayar?
+  noHp          String?
+  billId        String?         @unique
+  status        ReservasiStatus @default(PENDING)
 
-  sofa        Sofa     @relation(fields: [sofaId], references: [id])
+  sofa Sofa @relation(fields: [sofaId], references: [id])
+  bill Bill? @relation(fields: [billId], references: [id], onDelete: SetNull)
+
+  @@index([sofaId, jam])
+  @@index([status, jam])
+  @@index([billId])
 }
 
 model Shift {
-  id             String    @id @default(uuid())
-  kasirId        String
-  waktuBuka      DateTime  @default(now())
-  waktuTutup     DateTime?
-  kasAwal        Int
-  kasAkhir       Int?
-  kasHitung      Int?
-  selisih        Int?
-  pengeluaran    Int      @default(0)
+  id                 String    @id @default(uuid())
+  kasirId            String
+  waktuBuka          DateTime  @default(now())
+  waktuTutup         DateTime?
+  kasAwal            Int
+  kasAkhir           Int?
+  kasHitung          Int?
+  selisih            Int?
+  pengeluaran        Int       @default(0)
   catatanPengeluaran String?
-  totalPenjualan Int?
+  totalPenjualan     Int?
 
-  kasir          User      @relation(fields: [kasirId], references: [id])
-  bills          Bill[]
+  kasir User   @relation(fields: [kasirId], references: [id])
+  bills Bill[]
+
+  @@index([kasirId, waktuTutup])
 }
 
 enum Peran {
@@ -154,19 +217,22 @@ enum Peran {
 }
 
 model User {
-  id       String     @id @default(uuid())
-  nama     String
-  peran    Peran
-  pin      String?    // PIN untuk login (hashed)
-  isDeleted Boolean   @default(false)
+  id        String  @id @default(uuid())
+  nama      String
+  peran     Peran
+  pin       String? // PIN untuk login (hashed)
+  isDeleted Boolean @default(false)
 
   // Rate limiting fields
-  failedAttempts Int @default(0)
+  failedAttempts Int       @default(0)
   lockedUntil    DateTime?
 
-  bills    Bill[]     @relation("KasirBill")
-  shifts   Shift[]
+  bills     Bill[]     @relation("KasirBill")
+  shifts    Shift[]
   auditLogs AuditLog[]
+
+  @@index([peran, isDeleted])
+  @@index([lockedUntil])
 }
 
 model AuditLog {
@@ -174,10 +240,13 @@ model AuditLog {
   userId  String?
   aksi    String
   entitas String
-  detail  String
+  detail Json
   waktu   DateTime @default(now())
 
-  user    User?    @relation(fields: [userId], references: [id])
+  user User? @relation(fields: [userId], references: [id])
+
+  @@index([waktu])
+  @@index([entitas, waktu])
 }
 
 model Setting {

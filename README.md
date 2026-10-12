@@ -1,4 +1,4 @@
-# Kasir Bar POS
+# Superbar POS
 
 Aplikasi Point of Sale untuk bisnis bar dan restoran yang dibangun dengan Next.js, Prisma, dan PostgreSQL. Sistem ini mencakup login staf, transaksi dine-in/take away/reservasi, pengelolaan menu, board dapur dan bar, serta laporan harian.
 
@@ -13,6 +13,16 @@ Aplikasi Point of Sale untuk bisnis bar dan restoran yang dibangun dengan Next.j
 - Shift kasir dan laporan harian (EOD)
 - Audit log sederhana untuk aktivitas penting
 - Print struk / export CSV
+
+## Katalog menu
+
+Katalog POS mengikuti menu LSD Oktober, termasuk paket dan promo happy hour pukul 21.00–23.00 WIB. Harga dalam katalog adalah harga nett; PAJAK dan SERVICE_CHARGE untuk bill baru disetel ke 0 agar tidak ditambahkan lagi. Sinkronkan katalog dari `lib/menu-catalog.ts` dengan:
+
+```bash
+npm run db:sync-menu
+```
+
+Item lama dinonaktifkan secara soft-delete agar riwayat bill tetap utuh.
 
 ## Stack teknologi
 
@@ -57,13 +67,15 @@ npm install
 npx prisma generate
 ```
 
-6. Push schema ke database
+6. Terapkan migrasi database
 
 ```bash
-npm run db:push
+npx prisma migrate deploy
 ```
 
-7. Jalankan seeding data awal
+Migrasi membuat schema awal untuk database baru atau menambahkan perubahan pada database yang sudah di-baseline. Backfill menyesuaikan nomor bill ke hari operasional pukul 06.00 WIB dan menyimpan metode pembayaran lama yang dapat dipastikan. Detail pembayaran split historis yang tidak pernah disimpan tidak dapat direkonstruksi.
+
+7. (Opsional) Atur `INITIAL_STAFF_PIN` dan `INITIAL_MANAGER_PIN` di environment dengan PIN acak 4–6 digit, lalu jalankan seeding data awal
 
 ```bash
 npm run db:seed
@@ -104,8 +116,18 @@ DATABASE_URL="postgresql://postgres:password@localhost:5432/kasir_bar?schema=pub
 DIRECT_URL="postgresql://postgres:password@localhost:5432/kasir_bar?schema=public"
 NEXT_PUBLIC_SUPABASE_URL="https://your-project.supabase.co"
 NEXT_PUBLIC_SUPABASE_ANON_KEY="your-supabase-anon-key"
-JWT_SECRET="gantikan-dengan-string-rahasia-yang-kuat"
+JWT_SECRET="isi-dengan-rahasia-acak-minimal-32-byte"
+INITIAL_STAFF_PIN=""
+INITIAL_MANAGER_PIN=""
 ```
+
+Generate secret baru dengan:
+
+```bash
+node -e "console.log(require('node:crypto').randomBytes(32).toString('base64url'))"
+```
+
+Jangan gunakan ulang nilai secret contoh. Mengganti `JWT_SECRET` membatalkan seluruh sesi login yang masih aktif.
 
 ## Data default yang di-seed
 
@@ -116,10 +138,7 @@ Setelah menjalankan `npm run db:seed`, sistem akan menyiapkan:
 - User staf default
 - Setting pajak, service charge, dan happy hour
 
-### Login default
-
-- PIN staf umum: `123456`
-- PIN manager: `999999`
+Seed membutuhkan `INITIAL_STAFF_PIN` dan `INITIAL_MANAGER_PIN`; tidak ada PIN default yang ditanam di source atau dicetak ke log. Seed juga mempertahankan PIN pengguna yang sudah ada.
 
 Role default yang disediakan:
 
@@ -137,8 +156,19 @@ npm run build
 npm run lint
 npx prisma studio
 npm run db:seed
-npm run db:push
+npm run db:reconcile-history
 ```
+
+`db:reconcile-history` runs in dry-run mode by default. Review its counts, then
+pass `-- --apply` to backfill only unambiguous legacy payment methods, confirm
+pending payments on already-closed bills, and recalculate closed-shift sales
+and cash differences. Historical mixed-method bills without saved allocations
+are left unchanged because their cash/non-cash split cannot be inferred safely.
+For a database confirmed to contain only test transactions, add
+`-- --apply --normalize-test-cash` to also replace each closed test shift's
+physical closing cash with cash expected from confirmed cash tenders and
+recalculate the closing difference. Never use that option on live accounting
+data.
 
 ## Catatan pengembangan
 

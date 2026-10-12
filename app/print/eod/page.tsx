@@ -1,7 +1,7 @@
 import { prisma } from "@/lib/prisma"
 import { connection } from "next/server"
 import { getStartOfDayWIB, getEndOfDayWIB } from "@/lib/timezone"
-import { summarizeShiftCash } from "@/lib/shift-cash"
+import { cashSalesForBill, summarizeShiftCash } from "@/lib/shift-math"
 
 export const instant = false
 
@@ -20,9 +20,9 @@ export default async function PrintEODPage({
     prisma.bill.findMany({
       where: {
         status: "LUNAS",
-        waktuTutup: { gte: targetDate, lt: nextDate }
+        waktuTutup: { gte: targetDate, lte: nextDate }
       },
-      include: { sofa: true, kasir: true },
+      include: { sofa: true, kasir: true, payments: true },
       orderBy: { nomorBill: 'asc' }
     }),
     prisma.setting.findMany(),
@@ -30,14 +30,17 @@ export default async function PrintEODPage({
       where: { waktuBuka: { gte: targetDate, lt: nextDate } },
       include: {
         kasir: true,
-        bills: { where: { status: "LUNAS" } }
+        bills: {
+          where: { status: "LUNAS" },
+          include: { payments: true }
+        }
       }
     })
   ])
 
   const getSetting = (kunci: string, fallback: string) => settings.find(s => s.kunci === kunci)?.nilai || fallback
-  const namaBar = getSetting('NAMA_BAR', 'LSD SUPERBAR')
-  const alamatBar = getSetting('ALAMAT_BAR', 'Jl. Gatot Subroto Barat No.317')
+  const namaBar = getSetting('NAMA_BAR', 'SUPERBAR')
+  const alamatBar = getSetting('ALAMAT_BAR', 'Jl. Gatot Subroto Barat No.317 Pemecutan Kaja, North Denpasar')
   
   const dateStr = targetDate.toLocaleDateString('id-ID', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })
 
@@ -47,6 +50,7 @@ export default async function PrintEODPage({
   const totalDiskon = bills.reduce((acc, b) => acc + b.diskon, 0)
   const totalPajak = bills.reduce((acc, b) => acc + b.pajak, 0)
   const totalService = bills.reduce((acc, b) => acc + b.service, 0)
+  const totalPembulatan = bills.reduce((acc, b) => acc + b.pembulatan, 0)
   const totalPettyCash = shifts.reduce((acc, s) => acc + s.pengeluaran, 0)
   const totalKasBuka = shifts.reduce((acc, s) => acc + s.kasAwal, 0)
 
@@ -60,8 +64,12 @@ export default async function PrintEODPage({
   // Payment method breakdown
   const paymentBreakdown: Record<string, number> = {}
   bills.forEach(b => {
-    const method = normalizeMethodKey(b.metodeBayar)
-    paymentBreakdown[method] = (paymentBreakdown[method] || 0) + b.total
+    const entries = b.payments.length > 0
+      ? b.payments.map(payment => ({ method: payment.metode, amount: payment.jumlah }))
+      : [{ method: normalizeMethodKey(b.metodeBayar), amount: b.total }]
+    entries.forEach(({ method, amount }) => {
+      paymentBreakdown[method] = (paymentBreakdown[method] || 0) + amount
+    })
   })
 
   // Per-sofa breakdown
@@ -77,16 +85,17 @@ export default async function PrintEODPage({
   // Total pax (jumlah tamu)
   const totalPax = bills.length
 
+  const cashReceived = bills.reduce((sum, bill) => sum + cashSalesForBill(bill), 0)
+  const nonCashSales = totalPendapatan - cashReceived
   const shiftCashSummary = summarizeShiftCash(shifts)
-  const cashReceived = shiftCashSummary.cashSales
-  const shiftSales = shifts.reduce((sum, shift) => sum + shift.bills.reduce((billSum, bill) => billSum + bill.total, 0), 0)
-  const nonCashSales = shiftSales - cashReceived
   const balance = shiftCashSummary.expectedCash
   const cashTolerance = 50000
   const cashDifference = shiftCashSummary.cashDifference
   const cashStatus = cashDifference === null
-    ? 'BELUM_DIHITUNG'
-    : Math.abs(cashDifference) <= cashTolerance ? 'SESUAI' : Math.abs(cashDifference) <= cashTolerance * 2 ? 'WASPADA' : 'KRITIS'
+    ? 'BELUM_DITUTUP'
+    : Math.abs(cashDifference) <= cashTolerance
+      ? 'SESUAI'
+      : Math.abs(cashDifference) <= cashTolerance * 2 ? 'WASPADA' : 'KRITIS'
 
   const fmt = (n: number) => `Rp ${n.toLocaleString('id-ID')}`
   const dashes = '─'.repeat(42)
@@ -161,7 +170,7 @@ export default async function PrintEODPage({
           <p className="text-center font-bold mb-1">── REKONSILIASI KAS ──</p>
         </div>
         <div className="flex justify-between">
-          <span>STATUS</span>
+          <span>STATUS REKONSILIASI KAS</span>
           <span className="font-bold">{cashStatus}</span>
         </div>
         <div className="flex justify-between">
@@ -207,6 +216,10 @@ export default async function PrintEODPage({
           <div className="flex justify-between">
             <span>PAJAK</span>
             <span>{fmt(totalPajak)}</span>
+          </div>
+          <div className="flex justify-between">
+            <span>PEMBULATAN</span>
+            <span>{fmt(totalPembulatan)}</span>
           </div>
 
           <div className="border-t border-black mt-1 pt-1" />
@@ -263,7 +276,7 @@ export default async function PrintEODPage({
         {/* Footer */}
         <div className="mt-4 text-center border-t border-dashed border-black pt-3">
           <p className="font-bold text-[10px]">── END OF DAY REPORT ──</p>
-          <p className="mt-2 text-[9px] text-gray-400">Powered by Bar POS System</p>
+          <p className="mt-2 text-[9px] text-gray-400">Powered by Superbar POS</p>
         </div>
 
         {/* Auto Print Script */}

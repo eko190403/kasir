@@ -20,8 +20,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Bar POS - Sistem Kasir Bar",
-  description: "Sistem POS untuk manajemen pesanan bar dengan fitur taking order, kitchen display, dan pembayaran",
+  title: "Superbar - Sistem Kasir Bar",
+  description: "Sistem POS Superbar untuk mengelola pesanan, pembayaran, dan operasional bar",
 };
 
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
@@ -39,9 +39,9 @@ export default async function RootLayout({ children }: { children: React.ReactNo
           <nav className="border-b border-zinc-800 bg-zinc-900/80 backdrop-blur-md sticky top-0 z-50">
             <div className="container mx-auto px-4 h-14 flex items-center gap-1">
               {/* Logo */}
-              <a href="/" className="text-lg font-black bg-gradient-to-r from-amber-300 to-amber-500 bg-clip-text text-transparent mr-3 shrink-0">
-                Bar POS
-              </a>
+              <Link href="/" className="text-lg font-black bg-gradient-to-r from-amber-300 to-amber-500 bg-clip-text text-transparent mr-3 shrink-0">
+                Superbar
+              </Link>
 
               {/* Nav links - scrollable on mobile */}
               <div className="flex items-center gap-1 overflow-x-auto hide-scrollbar flex-1">
@@ -54,16 +54,16 @@ export default async function RootLayout({ children }: { children: React.ReactNo
 
                 <div className="w-px h-5 bg-zinc-700 mx-1 shrink-0" />
 
-                <a href="/kitchen" className="px-3 py-1.5 rounded-lg hover:bg-amber-900/30 text-amber-400 hover:text-amber-300 transition text-xs font-medium whitespace-nowrap">🍳 Dapur</a>
-                <a href="/bar" className="px-3 py-1.5 rounded-lg hover:bg-blue-900/30 text-blue-400 hover:text-blue-300 transition text-xs font-medium whitespace-nowrap">🍹 Bar</a>
+                <Link href="/kitchen" className="px-3 py-1.5 rounded-lg hover:bg-amber-900/30 text-amber-400 hover:text-amber-300 transition text-xs font-medium whitespace-nowrap">🍳 Dapur</Link>
+                <Link href="/bar" className="px-3 py-1.5 rounded-lg hover:bg-blue-900/30 text-blue-400 hover:text-blue-300 transition text-xs font-medium whitespace-nowrap">🍹 Bar</Link>
 
                 <div className="w-px h-5 bg-zinc-700 mx-1 shrink-0" />
 
-                <Link href="/menu" prefetch={false} className="px-3 py-1.5 rounded-lg hover:bg-zinc-800 text-zinc-400 hover:text-white transition text-xs font-medium whitespace-nowrap">Menu</Link>
-                <Link href="/sofas" prefetch={false} className="px-3 py-1.5 rounded-lg hover:bg-zinc-800 text-zinc-400 hover:text-white transition text-xs font-medium whitespace-nowrap">Meja</Link>
-                <Link href="/staf" prefetch={false} className="px-3 py-1.5 rounded-lg hover:bg-zinc-800 text-zinc-400 hover:text-white transition text-xs font-medium whitespace-nowrap">Staf</Link>
-                <Link href="/shift" prefetch={false} className="px-3 py-1.5 rounded-lg hover:bg-zinc-800 text-zinc-400 hover:text-white transition text-xs font-medium whitespace-nowrap">Shift</Link>
-                <a href="/settings" className="px-3 py-1.5 rounded-lg hover:bg-zinc-800 text-zinc-400 hover:text-white transition text-xs font-medium whitespace-nowrap">⚙ Pengaturan</a>
+                <Link href="/menu" className="px-3 py-1.5 rounded-lg hover:bg-zinc-800 text-zinc-400 hover:text-white transition text-xs font-medium whitespace-nowrap">Menu</Link>
+                <Link href="/sofas" className="px-3 py-1.5 rounded-lg hover:bg-zinc-800 text-zinc-400 hover:text-white transition text-xs font-medium whitespace-nowrap">Meja</Link>
+                <Link href="/staf" className="px-3 py-1.5 rounded-lg hover:bg-zinc-800 text-zinc-400 hover:text-white transition text-xs font-medium whitespace-nowrap">Staf</Link>
+                <Link href="/shift" className="px-3 py-1.5 rounded-lg hover:bg-zinc-800 text-zinc-400 hover:text-white transition text-xs font-medium whitespace-nowrap">Shift</Link>
+                <Link href="/settings" className="px-3 py-1.5 rounded-lg hover:bg-zinc-800 text-zinc-400 hover:text-white transition text-xs font-medium whitespace-nowrap">⚙ Pengaturan</Link>
               </div>
 
               {/* User info + Logout — always visible */}

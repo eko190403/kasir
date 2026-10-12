@@ -3,8 +3,8 @@ import { connection } from "next/server"
 import { createTakeAwayOrder } from "./actions"
 import { prisma } from "@/lib/prisma"
 import { getStartOfDayWIB, getEndOfDayWIB } from "@/lib/timezone"
+import { cashSalesForBill } from "@/lib/shift-math"
 import { Utensils, ShoppingBag, Calendar, ListTodo, BookOpen, PieChart, Wallet, ChefHat, Wine, Users, Settings, Sparkles } from "lucide-react"
-import { cashSalesForBill } from "@/lib/shift-cash"
 
 export const instant = false
 
@@ -19,7 +19,8 @@ export default async function Home() {
       where: { status: "LUNAS", waktuTutup: { gte: todayStart, lte: todayEnd } },
       select: {
         total: true,
-        metodeBayar: true
+        metodeBayar: true,
+        payments: { select: { metode: true, jumlah: true } }
       }
     }),
     prisma.bill.count({
@@ -45,7 +46,7 @@ export default async function Home() {
       <div className="mx-auto w-full max-w-6xl space-y-8">
         <header className="flex flex-col gap-2 border-b border-zinc-800 pb-4 md:flex-row md:items-center md:justify-between">
           <div>
-            <p className="text-xs uppercase tracking-[0.2em] text-amber-400">Kasir Bar</p>
+            <p className="text-xs uppercase tracking-[0.2em] text-amber-400">Superbar</p>
             <h1 className="text-2xl font-black text-white md:text-3xl">Dashboard Operasional</h1>
           </div>
           <div className="inline-flex items-center gap-2 rounded-full border border-amber-700/40 bg-amber-500/10 px-3 py-1.5 text-sm text-amber-300">

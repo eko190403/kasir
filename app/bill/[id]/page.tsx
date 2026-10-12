@@ -10,14 +10,27 @@ export default async function BillPage({ params }: { params: Promise<{ id: strin
   
   const bill = await prisma.bill.findUnique({
     where: { id },
-    include: { billItems: true }
+    include: { billItems: true, payments: true }
   })
   
   if (!bill) return notFound()
 
   const menuItems = await prisma.menuItem.findMany({
+    where: { isDeleted: false },
     orderBy: { kategori: 'asc' }
   })
+  const depositReservasis = bill.status === 'TERBUKA' && bill.sofaId
+    ? await prisma.reservasi.findMany({
+      where: {
+        sofaId: bill.sofaId,
+        status: 'CONFIRMED',
+        billId: null,
+        deposit: { gt: 0 }
+      },
+      orderBy: { jam: 'asc' },
+      select: { id: true, nama: true, jam: true, deposit: true, depositMetode: true }
+    })
+    : []
 
   return (
     <main className="container mx-auto p-4 space-y-6">
@@ -35,11 +48,14 @@ export default async function BillPage({ params }: { params: Promise<{ id: strin
         billId={bill.id} 
         menuItems={menuItems}
         initialBillItems={bill.billItems}
+        initialPayments={bill.payments}
+        depositReservasis={depositReservasis}
         totals={{
           subtotal: bill.subtotal,
           diskon: bill.diskon,
           service: bill.service,
           pajak: bill.pajak,
+          pembulatan: bill.pembulatan,
           total: bill.total
         }}
       />

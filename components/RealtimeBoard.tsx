@@ -51,6 +51,7 @@ export default function RealtimeBoard({
   // Supabase Realtime — replace polling entirely
   useEffect(() => {
     fetchFreshRef.current = fetchFresh
+    void fetchFresh()
     const channel = supabase
       .channel(`kitchen-${kategori}-v2`)
       .on(
@@ -99,8 +100,8 @@ export default function RealtimeBoard({
       await updateItemStatus(id, newStatus)
       if (newStatus === "DIPROSES") toast.warning(`Sedang diproses: ${namaItem}`)
       if (newStatus === "SIAP") toast.success(`Siap diantar: ${namaItem}!`)
-    } catch {
-      toast.error("Gagal mengupdate status, coba lagi.")
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Gagal mengupdate status, coba lagi.")
       setItems(current => current.map(i => i.id === id ? { ...i, status: previousStatus } : i))
     }
   }

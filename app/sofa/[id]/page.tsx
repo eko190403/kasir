@@ -4,6 +4,7 @@ import BillClient from "@/components/BillClient"
 import PindahSofaButton from "@/components/PindahSofaButton"
 import SofaStatusToggle from "@/components/SofaStatusToggle"
 import Link from "next/link"
+import { redirect } from "next/navigation"
 
 export const instant = false
 
@@ -25,7 +26,39 @@ export default async function SofaPage({ params }: { params: Promise<{ id: strin
   }
 
   // Ensure there is an active bill for this sofa (New Order / Open Order)
-  const { bill, sofaStatus } = await createOrGetActiveBill(sofa.id, sofa.status)
+  let activeBill
+  try {
+    activeBill = await createOrGetActiveBill(sofa.id)
+  } catch (error) {
+    if (error instanceof Error && error.message.includes("Buka shift terlebih dahulu")) {
+      redirect(`/shift?next=${encodeURIComponent(`/sofa/${sofa.id}`)}`)
+    }
+    throw error
+  }
+
+  const bill = await prisma.bill.findUnique({
+    where: { id: activeBill.id },
+    include: { billItems: true, payments: true }
+  })
+  if (!bill) throw new Error('Bill aktif tidak ditemukan.')
+
+  const menuItems = await prisma.menuItem.findMany({
+    where: { isDeleted: false },
+    orderBy: { kategori: 'asc' }
+  })
+
+  // Ambil semua sofa untuk fitur pindah
+  const allSofas = await prisma.sofa.findMany({ orderBy: { nama: 'asc' } })
+  const depositReservasis = await prisma.reservasi.findMany({
+    where: {
+      sofaId: sofa.id,
+      status: 'CONFIRMED',
+      billId: null,
+      deposit: { gt: 0 }
+    },
+    orderBy: { jam: 'asc' },
+    select: { id: true, nama: true, jam: true, deposit: true, depositMetode: true }
+  })
 
   return (
     <main className="container mx-auto p-4 space-y-6">
@@ -52,11 +85,14 @@ export default async function SofaPage({ params }: { params: Promise<{ id: strin
         billId={bill.id} 
         menuItems={menuItems}
         initialBillItems={bill.billItems}
+        initialPayments={bill.payments}
+        depositReservasis={depositReservasis}
         totals={{
           subtotal: bill.subtotal,
           diskon: bill.diskon,
           service: bill.service,
           pajak: bill.pajak,
+          pembulatan: bill.pembulatan,
           total: bill.total
         }}
       />

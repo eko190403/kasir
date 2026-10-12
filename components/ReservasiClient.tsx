@@ -11,13 +11,14 @@ export default function ReservasiClient({ reservasis, sofas }: { reservasis: any
   const [loading, setLoading] = useState(false)
   const [filter, setFilter] = useState<'ALL' | 'PENDING' | 'CONFIRMED' | 'COMPLETED' | 'CANCELLED'>('ALL')
   const [search, setSearch] = useState('')
-  const [form, setForm] = useState({ sofaId: '', nama: '', jam: '', jumlahOrang: 2, deposit: 0 })
+  const [form, setForm] = useState({ sofaId: '', nama: '', noHp: '', jam: '', jumlahOrang: 2, deposit: 0, depositMetode: 'TUNAI' as 'TUNAI' | 'KARTU' | 'QRIS' })
 
   const filteredReservasis = useMemo(() => {
     return reservasis.filter((item) => {
       const matchesStatus = filter === 'ALL' || item.status === filter
       const matchesSearch = item.nama.toLowerCase().includes(search.toLowerCase()) ||
-        item.sofa?.nama?.toLowerCase().includes(search.toLowerCase())
+        item.sofa?.nama?.toLowerCase().includes(search.toLowerCase()) ||
+        item.noHp?.includes(search)
       return matchesStatus && matchesSearch
     })
   }, [reservasis, filter, search])
@@ -35,9 +36,9 @@ export default function ReservasiClient({ reservasis, sofas }: { reservasis: any
     }
     setLoading(true)
     try {
-      await createReservasi(form.sofaId, form.nama, form.jam, form.jumlahOrang, form.deposit || undefined)
+      await createReservasi(form.sofaId, form.nama, form.jam, form.jumlahOrang, form.deposit || undefined, form.noHp, form.depositMetode)
       setShowForm(false)
-      setForm({ sofaId: '', nama: '', jam: '', jumlahOrang: 2, deposit: 0 })
+      setForm({ sofaId: '', nama: '', noHp: '', jam: '', jumlahOrang: 2, deposit: 0, depositMetode: 'TUNAI' })
       router.refresh()
     } catch (err: any) {
       toast.error(err.message)
@@ -111,6 +112,11 @@ export default function ReservasiClient({ reservasis, sofas }: { reservasis: any
                 className="w-full bg-zinc-800 border border-zinc-700 rounded-lg p-2 text-sm mt-1 focus:outline-none focus:border-emerald-500" />
             </div>
             <div>
+              <label className="text-xs text-zinc-400">Nomor Telepon (Opsional)</label>
+              <input type="tel" value={form.noHp} onChange={e => setForm({...form, noHp: e.target.value})}
+                className="w-full bg-zinc-800 border border-zinc-700 rounded-lg p-2 text-sm mt-1 focus:outline-none focus:border-emerald-500" />
+            </div>
+            <div>
               <label className="text-xs text-zinc-400">Sofa</label>
               <select value={form.sofaId} onChange={e => setForm({...form, sofaId: e.target.value})}
                 className="w-full bg-zinc-800 border border-zinc-700 rounded-lg p-2 text-sm mt-1 focus:outline-none focus:border-emerald-500">
@@ -135,6 +141,17 @@ export default function ReservasiClient({ reservasis, sofas }: { reservasis: any
               <input type="number" min="0" value={form.deposit} onChange={e => setForm({...form, deposit: parseInt(e.target.value) || 0})}
                 className="w-full bg-zinc-800 border border-zinc-700 rounded-lg p-2 text-sm mt-1 focus:outline-none focus:border-emerald-500" />
             </div>
+            {form.deposit > 0 && (
+              <div>
+                <label className="text-xs text-zinc-400">Metode Pembayaran Deposit</label>
+                <select value={form.depositMetode} onChange={e => setForm({...form, depositMetode: e.target.value as 'TUNAI' | 'KARTU' | 'QRIS'})}
+                  className="w-full bg-zinc-800 border border-zinc-700 rounded-lg p-2 text-sm mt-1 focus:outline-none focus:border-emerald-500">
+                  <option value="TUNAI">Tunai</option>
+                  <option value="KARTU">Kartu</option>
+                  <option value="QRIS">QRIS</option>
+                </select>
+              </div>
+            )}
           </div>
           <div className="flex gap-2 pt-2">
             <button onClick={() => setShowForm(false)} className="px-4 py-2 bg-zinc-700 rounded-lg text-sm">Batal</button>
@@ -170,8 +187,12 @@ export default function ReservasiClient({ reservasis, sofas }: { reservasis: any
                 <p className="text-sm text-zinc-300">
                   {new Date(r.jam).toLocaleDateString('id-ID', { weekday: 'short', day: 'numeric', month: 'short' })} • {new Date(r.jam).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}
                 </p>
+                {r.noHp && <p className="text-xs text-zinc-400">Telp: {r.noHp}</p>}
                 {r.deposit && r.deposit > 0 && (
-                  <p className="text-xs text-emerald-400">Deposit: Rp {r.deposit.toLocaleString('id-ID')}</p>
+                  <p className="text-xs text-emerald-400">
+                    Deposit: Rp {r.deposit.toLocaleString('id-ID')} ({r.depositMetode || 'metode lama'})
+                    {r.billId ? ' · sudah diterapkan ke bill' : ''}
+                  </p>
                 )}
                 {r.status === 'PENDING' && (
                   <div className="flex gap-2 pt-2 border-t border-zinc-800">

@@ -3,7 +3,7 @@ import { connection } from "next/server"
 import { Receipt, Banknote, Landmark, Percent, Download, CreditCard, Flame, Activity, ShieldAlert, History, Calendar, PieChart, Printer } from "lucide-react"
 
 import { getStartOfDayWIB, getEndOfDayWIB } from "@/lib/timezone"
-import { summarizeShiftCash } from "@/lib/shift-cash"
+import { summarizeShiftCash } from "@/lib/shift-math"
 
 export const instant = false
 
@@ -18,9 +18,10 @@ export default async function SummaryPage({ searchParams }: { searchParams: Prom
   const bills = await prisma.bill.findMany({
     where: {
       status: "LUNAS",
-      waktuTutup: { gte: targetDate, lt: nextDate }
+      waktuTutup: { gte: targetDate, lte: nextDate }
     },
     include: {
+      payments: true,
       sofa: true,
       kasir: true,
       billItems: {
@@ -40,14 +41,18 @@ export default async function SummaryPage({ searchParams }: { searchParams: Prom
   // Payment method breakdown
   const paymentBreakdown: Record<string, number> = {}
   bills.forEach(b => {
-    const method = b.metodeBayar || 'Tidak diketahui'
-    paymentBreakdown[method] = (paymentBreakdown[method] || 0) + b.total
+    const entries = b.payments.length > 0
+      ? b.payments.map(payment => ({ method: payment.metode, amount: payment.jumlah }))
+      : [{ method: b.metodeBayar || 'Tidak diketahui', amount: b.total }]
+    entries.forEach(({ method, amount }) => {
+      paymentBreakdown[method] = (paymentBreakdown[method] || 0) + amount
+    })
   })
 
   // Fetch Void & Comp items for the day
   const voidCompItems = await prisma.billItem.findMany({
     where: {
-      bill: { waktuTutup: { gte: targetDate, lt: nextDate } },
+      bill: { waktuTutup: { gte: targetDate, lte: nextDate } },
       OR: [{ isVoid: true }, { isComp: true }]
     },
     include: { bill: { include: { sofa: true } } }
@@ -79,12 +84,15 @@ export default async function SummaryPage({ searchParams }: { searchParams: Prom
     where: { waktuBuka: { gte: targetDate, lt: nextDate } },
     include: {
       kasir: true,
-      bills: { where: { status: "LUNAS" } }
+      bills: {
+        where: { status: "LUNAS" },
+        include: { payments: true }
+      }
     }
   })
   const totalPettyCash = shifts.reduce((acc, s) => acc + s.pengeluaran, 0)
-  const totalOpeningCash = shifts.reduce((acc, s) => acc + (s.kasAwal || 0), 0)
   const cashSummary = summarizeShiftCash(shifts)
+  const totalOpeningCash = shifts.reduce((acc, s) => acc + s.kasAwal, 0)
   const totalCashSales = cashSummary.cashSales
   const cashDifference = cashSummary.cashDifference
   const totalNetto = Math.max(0, totalPendapatan - totalPettyCash)
@@ -284,7 +292,7 @@ export default async function SummaryPage({ searchParams }: { searchParams: Prom
             <div className="mt-2 text-xl font-black text-red-300">- Rp {totalPettyCash.toLocaleString('id-ID')}</div>
           </div>
           <div className={`rounded-xl p-4 ${cashDifference === null ? 'bg-zinc-800' : cashDifference >= 0 ? 'bg-emerald-950/40 border border-emerald-500/30' : 'bg-red-950/40 border border-red-500/30'}`}>
-            <div className="text-xs uppercase tracking-[0.2em] text-zinc-300">Selisih Kas</div>
+            <div className="text-xs uppercase tracking-[0.2em] text-zinc-300">Selisih</div>
             <div className={`mt-2 text-xl font-black ${cashDifference === null ? 'text-zinc-400' : cashDifference >= 0 ? 'text-emerald-300' : 'text-red-300'}`}>
               {cashDifference === null ? 'Belum dihitung' : cashDifference >= 0 ? `+ Rp ${cashDifference.toLocaleString('id-ID')}` : `- Rp ${Math.abs(cashDifference).toLocaleString('id-ID')}`}
             </div>
@@ -453,7 +461,7 @@ export default async function SummaryPage({ searchParams }: { searchParams: Prom
               <span className={`font-bold shrink-0 w-24 ${log.aksi === 'RETURN_ITEM' ? 'text-red-400' : log.aksi === 'CLOSE_BILL' ? 'text-emerald-400' : 'text-amber-400'}`}>
                 {log.aksi}
               </span>
-              <span className="text-zinc-300 truncate">{log.detail}</span>
+              <span className="text-zinc-300 truncate">{JSON.stringify(log.detail)}</span>
             </div>
           ))}
           {auditLogs.length === 0 && (

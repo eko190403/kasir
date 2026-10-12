@@ -17,8 +17,8 @@ export default async function PrintBillPage({ params }: { params: Promise<{ id: 
   if (!bill) return <div>Bill not found</div>
 
   const getSetting = (kunci: string, fallback: string) => settings.find(s => s.kunci === kunci)?.nilai || fallback
-  const namaBar = getSetting('NAMA_BAR', 'BAR POS')
-  const alamatBar = getSetting('ALAMAT_BAR', 'Jl. Sudirman No. 123')
+  const namaBar = getSetting('NAMA_BAR', 'SUPERBAR')
+  const alamatBar = getSetting('ALAMAT_BAR', 'Jl. Gatot Subroto Barat No.317 Pemecutan Kaja, North Denpasar')
   const normalItems = bill.billItems.filter((item) => !item.isVoid && !item.diretur && !item.isComp)
   const compItems = bill.billItems.filter((item) => item.isComp)
 
@@ -58,7 +58,9 @@ export default async function PrintBillPage({ params }: { params: Promise<{ id: 
               {normalItems.map(item => (
                 <div key={item.id} className="mb-2">
                   <div className="flex justify-between gap-2">
-                    <span className="max-w-[60%] break-words">{item.namaItem}</span>
+                    <span className="max-w-[60%] break-words">
+                      {item.namaItem}{item.isHappyHour ? " (Happy Hour)" : ""}
+                    </span>
                     <span>{formatMoney(item.harga * item.qty)}</span>
                   </div>
                   <div className="text-gray-500 ml-1 text-[10px]">
@@ -102,6 +104,12 @@ export default async function PrintBillPage({ params }: { params: Promise<{ id: 
             <span>Pajak</span>
             <span>{formatMoney(bill.pajak)}</span>
           </div>
+          {bill.pembulatan !== 0 && (
+            <div className="flex justify-between">
+              <span>Pembulatan</span>
+              <span>{formatMoney(bill.pembulatan)}</span>
+            </div>
+          )}
           <div className="flex justify-between font-black text-base mt-2 pt-2 border-t border-dashed border-black">
             <span>Total</span>
             <span>{formatMoney(bill.total)}</span>

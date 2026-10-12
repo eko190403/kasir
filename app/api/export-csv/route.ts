@@ -1,11 +1,22 @@
 import { prisma } from "@/lib/prisma"
 import { NextRequest, NextResponse } from "next/server"
 import { connection } from "next/server"
+import { getSession } from "@/lib/auth"
 
 import { getStartOfDayWIB, getEndOfDayWIB } from "@/lib/timezone"
 
 export async function GET(req: NextRequest) {
   await connection()
+  const session = await getSession()
+  const actor = session?.user?.id
+    ? await prisma.user.findUnique({
+      where: { id: session.user.id, isDeleted: false },
+      select: { peran: true }
+    })
+    : null
+  if (!actor) return new NextResponse("Unauthorized", { status: 401 })
+  if (actor.peran !== "MANAJER") return new NextResponse("Forbidden", { status: 403 })
+
   const { searchParams } = new URL(req.url)
   const dateStr = searchParams.get('date')
 
@@ -15,7 +26,7 @@ export async function GET(req: NextRequest) {
   const bills = await prisma.bill.findMany({
     where: {
       status: "LUNAS",
-      waktuTutup: { gte: targetDate, lt: nextDate }
+      waktuTutup: { gte: targetDate, lte: nextDate }
     },
     include: {
       sofa: true,

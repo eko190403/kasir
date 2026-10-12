@@ -8,7 +8,11 @@ export default async function KitchenPage() {
   const items = await prisma.billItem.findMany({
     where: {
       status: { not: "SIAP" },
-      menuItem: { kategori: "MAKANAN" }
+      menuItem: { kategori: "MAKANAN" },
+      bill: { status: "TERBUKA" },
+      isVoid: false,
+      isComp: false,
+      diretur: false,
     },
     orderBy: { bill: { waktuBuka: 'asc' } },
     include: { menuItem: true, bill: { include: { sofa: true } } }

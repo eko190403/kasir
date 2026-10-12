@@ -5,7 +5,18 @@ import { History, ShieldCheck, AlertTriangle, Clock3 } from "lucide-react"
 
 export const instant = false
 
-function parseLogDetail(detail: string) {
+function parseLogDetail(detail: unknown) {
+  if (typeof detail !== 'string') {
+    if (detail && typeof detail === 'object') {
+      const parsed = detail as Record<string, unknown>
+      const keys = ['alasan', 'billId', 'nomorBill', 'namaItem', 'otorisasi']
+      for (const key of keys) {
+        if (parsed[key]) return `${key}: ${String(parsed[key])}`
+      }
+      return JSON.stringify(parsed)
+    }
+    return String(detail)
+  }
   try {
     const parsed = JSON.parse(detail)
     if (typeof parsed === 'string') return parsed

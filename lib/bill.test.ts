@@ -1,5 +1,5 @@
 import { expect, test, describe } from 'vitest'
-import { computeBillMathematics } from './bill'
+import { computeBillMathematics } from './bill-math'
 
 describe('Kalkulasi Bill POS', () => {
   test('Hitung normal: Subtotal + Service (5%) + Pajak (10%)', () => {
@@ -28,9 +28,6 @@ describe('Kalkulasi Bill POS', () => {
   })
 
   test('Pembulatan ratusan aktif', () => {
-    const items = [
-      { harga: 33333, qty: 1, diretur: false, isVoid: false, isComp: false },
-    ]
     // 33,333
     // Service 5% = 1667
     // Pajak 10% dari 35,000 = 3500
@@ -115,8 +112,76 @@ describe('Kalkulasi Bill POS', () => {
     })
 
     expect(hasil.subtotal).toBe(50000)
+    expect(hasil.diskon).toBe(50000)
     expect(hasil.service).toBe(0)
     expect(hasil.pajak).toBe(0)
     expect(hasil.total).toBe(0)
+  })
+
+  test('Diskon negatif tidak dapat menaikkan total', () => {
+    const hasil = computeBillMathematics({
+      items: [{ harga: 10000, qty: 1, diretur: false, isVoid: false, isComp: false }],
+      diskon: -5000,
+      pajakRate: 0,
+      serviceRate: 0,
+      pembulatanRatusan: false
+    })
+
+    expect(hasil.diskon).toBe(0)
+    expect(hasil.total).toBe(10000)
+  })
+
+  test('Tarif 0% tetap 0 dan rate NaN tidak merusak total', () => {
+    const hasil = computeBillMathematics({
+      items: [{ harga: 10000, qty: 1, diretur: false, isVoid: false, isComp: false }],
+      diskon: 0,
+      pajakRate: 0,
+      serviceRate: Number.NaN,
+      pembulatanRatusan: false
+    })
+
+    expect(hasil.service).toBe(0)
+    expect(hasil.pajak).toBe(0)
+    expect(hasil.total).toBe(10000)
+  })
+
+  test('Tarif pecahan menghitung tanpa kehilangan presisi', () => {
+    const hasil = computeBillMathematics({
+      items: [{ harga: 12345, qty: 1, diretur: false, isVoid: false, isComp: false }],
+      diskon: 0,
+      pajakRate: 10,
+      serviceRate: 2.5,
+      pembulatanRatusan: false
+    })
+
+    expect(hasil.service).toBe(309)
+    expect(hasil.pajak).toBe(1265)
+    expect(hasil.total).toBe(13919)
+  })
+
+  test('Pembulatan memakai Math.round untuk nilai tepat di bawah dan pada setengah', () => {
+    const calculateRoundedTotal = (harga: number) => computeBillMathematics({
+      items: [{ harga, qty: 1, diretur: false, isVoid: false, isComp: false }],
+      diskon: 0,
+      pajakRate: 0,
+      serviceRate: 0,
+      pembulatanRatusan: true
+    })
+
+    expect(calculateRoundedTotal(14240)).toMatchObject({ total: 14200, pembulatan: -40 })
+    expect(calculateRoundedTotal(14250)).toMatchObject({ total: 14300, pembulatan: 50 })
+  })
+
+  test('Harga pecahan dibulatkan sebelum dikalikan dengan tarif', () => {
+    const hasil = computeBillMathematics({
+      items: [{ harga: 11110.5, qty: 1, diretur: false, isVoid: false, isComp: false }],
+      diskon: 0,
+      pajakRate: 0,
+      serviceRate: 0,
+      pembulatanRatusan: false
+    })
+
+    expect(hasil.subtotal).toBe(11111)
+    expect(hasil.total).toBe(11111)
   })
 })
