@@ -403,30 +403,41 @@ export async function cleanupEmptyBills() {
   await requireRole([...ROLE_ORDER])
   await connection()
   const tenMinsAgo = new Date(Date.now() - 10 * 60 * 1000)
-  
-  const emptyBills = await prisma.bill.findMany({
-    where: { 
-      status: "TERBUKA",
-      waktuBuka: { lt: tenMinsAgo },
-      billItems: { none: {} } 
-    }
-  })
 
-  for (const bill of emptyBills) {
-    if (bill.sofaId) {
-      // Periksa apakah ini satu-satunya bill terbuka di sofa ini
-      const activeBillsCount = await prisma.bill.count({
+  await withSerializableRetry(async (tx) => {
+    const emptyBills = await tx.bill.findMany({
+      where: {
+        status: "TERBUKA",
+        waktuBuka: { lt: tenMinsAgo },
+        billItems: { none: {} },
+        payments: { none: {} },
+      },
+      select: { id: true, sofaId: true }
+    })
+
+    for (const bill of emptyBills) {
+      const deleted = await tx.bill.deleteMany({
+        where: {
+          id: bill.id,
+          status: "TERBUKA",
+          waktuBuka: { lt: tenMinsAgo },
+          billItems: { none: {} },
+          payments: { none: {} },
+        }
+      })
+      if (deleted.count === 0 || !bill.sofaId) continue
+
+      const activeBillsCount = await tx.bill.count({
         where: { sofaId: bill.sofaId, status: "TERBUKA" }
       })
-      if (activeBillsCount <= 1) {
-        await prisma.sofa.update({
-          where: { id: bill.sofaId },
+      if (activeBillsCount === 0) {
+        await tx.sofa.updateMany({
+          where: { id: bill.sofaId, status: { not: "KOSONG" } },
           data: { status: "KOSONG" }
         })
       }
     }
-    await prisma.bill.delete({ where: { id: bill.id } })
-  }
+  })
 }
 
 export async function addMenuItemToBill(billId: string, menuItemId: string, qty: number, catatan?: string) {
@@ -1589,7 +1600,7 @@ export async function createReservasi(
   noHp?: string,
   depositMetode?: BillPaymentInput["metode"]
 ) {
-  const session = await requireRole(POS_ROLES)
+  const session = await requireRole(["MANAJER", "KASIR"])
   const cleanedNama = nama.trim()
   if (!sofaId) throw new Error('Pilih sofa terlebih dahulu.')
   if (!cleanedNama || cleanedNama.length > 120) throw new Error('Nama tamu wajib diisi dan maksimal 120 karakter.')
@@ -1727,7 +1738,7 @@ export async function applyReservationDeposit(
 }
 
 export async function updateReservasiStatus(id: string, status: 'CONFIRMED' | 'CANCELLED' | 'COMPLETED') {
-  const session = await requireRole(POS_ROLES)
+  const session = await requireRole(["MANAJER", "KASIR"])
   if (!['CONFIRMED', 'CANCELLED', 'COMPLETED'].includes(status)) throw new Error('Status reservasi tidak valid.')
   const reservation = await prisma.reservasi.findUnique({ where: { id } })
   if (!reservation) throw new Error('Reservasi tidak ditemukan.')
