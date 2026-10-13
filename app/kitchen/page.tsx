@@ -1,9 +1,11 @@
 import { prisma } from "@/lib/prisma"
 import RealtimeBoard from "@/components/RealtimeBoard"
+import { requirePageRole } from "@/lib/page-auth"
 
 export const instant = false
 
 export default async function KitchenPage() {
+  await requirePageRole(["DAPUR", "BARTENDER", "MANAJER", "KASIR"])
   // Ambil semua item MAKANAN yang belum SIAP
   const items = await prisma.billItem.findMany({
     where: {

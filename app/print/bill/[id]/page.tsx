@@ -1,4 +1,7 @@
 import { prisma } from "@/lib/prisma"
+import { notFound } from "next/navigation"
+import { requirePageRole } from "@/lib/page-auth"
+import { canAccessBill } from "@/lib/bill-access"
 
 export const instant = false
 
@@ -6,6 +9,7 @@ const formatMoney = (value: number) => `Rp ${Math.round(value).toLocaleString('i
 
 export default async function PrintBillPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
+  const actor = await requirePageRole(["PELAYAN", "BARTENDER", "DAPUR", "KASIR", "MANAJER"])
   const [bill, settings] = await Promise.all([
     prisma.bill.findUnique({
       where: { id },
@@ -14,7 +18,7 @@ export default async function PrintBillPage({ params }: { params: Promise<{ id: 
     prisma.setting.findMany()
   ])
 
-  if (!bill) return <div>Bill not found</div>
+  if (!bill || !canAccessBill(actor.peran, actor.id, bill.kasirId)) return notFound()
 
   const getSetting = (kunci: string, fallback: string) => settings.find(s => s.kunci === kunci)?.nilai || fallback
   const namaBar = getSetting('NAMA_BAR', 'SUPERBAR')

@@ -3,16 +3,19 @@ import { prisma } from "@/lib/prisma"
 import { cleanupEmptyBills } from "@/app/actions"
 import OpenOrderClient from "@/components/OpenOrderClient"
 import { ShoppingCart } from "lucide-react"
+import { requirePageRole } from "@/lib/page-auth"
 
 export const instant = false
 
 export default async function OpenOrderPage() {
+  const actor = await requirePageRole(["PELAYAN", "BARTENDER", "DAPUR", "KASIR", "MANAJER"])
   await connection()
   await cleanupEmptyBills()
   const openBills = await prisma.bill.findMany({
     where: {
       status: 'TERBUKA',
       billItems: { some: {} },
+      ...(actor.peran === "MANAJER" ? {} : { kasirId: actor.id }),
     },
     include: {
       sofa: true,
@@ -32,7 +35,7 @@ export default async function OpenOrderPage() {
           {openBills.length} tagihan aktif
         </span>
       </header>
-      <OpenOrderClient bills={openBills as any} />
+      <OpenOrderClient bills={openBills} />
     </main>
   )
 }

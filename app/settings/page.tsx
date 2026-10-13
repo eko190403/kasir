@@ -1,9 +1,11 @@
 import { prisma } from "@/lib/prisma"
 import SettingsClient from "@/components/SettingsClient"
+import { requirePageRole } from "@/lib/page-auth"
 
 export const instant = false
 
 export default async function SettingsPage() {
+  await requirePageRole(["MANAJER"])
   const settings = await prisma.setting.findMany()
 
   return (

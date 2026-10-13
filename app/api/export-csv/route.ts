@@ -4,6 +4,7 @@ import { connection } from "next/server"
 import { getSession } from "@/lib/auth"
 
 import { getStartOfDayWIB, getEndOfDayWIB } from "@/lib/timezone"
+import { csvCell } from "@/lib/csv"
 
 export async function GET(req: NextRequest) {
   await connection()
@@ -47,16 +48,16 @@ export async function GET(req: NextRequest) {
     // Escape values to prevent CSV issues
     const row = [
       bill.id,
-      `"${waktu}"`,
-      `"${meja}"`,
-      `"${kasir}"`,
+      waktu,
+      meja,
+      kasir,
       bill.subtotal,
       bill.diskon,
       bill.pajak,
       bill.service,
       bill.total,
-      `"${bill.metodeBayar}"`
-    ].join(',')
+      bill.metodeBayar
+    ].map(csvCell).join(',')
     
     csv += row + "\n"
   })

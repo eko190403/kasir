@@ -1,8 +1,10 @@
 import EODReportClient from "@/components/EODReportClient"
+import { requirePageRole } from "@/lib/page-auth"
 
 export const instant = false
 
 export default async function EODReportPage() {
+  await requirePageRole(["MANAJER"])
   return (
     <main className="mx-auto w-full max-w-7xl space-y-5 px-4 py-5 sm:px-6">
       <header className="border-b border-zinc-800 pb-4">

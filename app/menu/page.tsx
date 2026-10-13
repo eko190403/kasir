@@ -1,10 +1,12 @@
 import { prisma } from "@/lib/prisma"
 import MenuClient from "@/components/MenuClient"
 import { BookOpen } from "lucide-react"
+import { requirePageRole } from "@/lib/page-auth"
 
 export const instant = false
 
 export default async function MenuPage() {
+  await requirePageRole(["MANAJER", "KASIR"])
   const menuItems = await prisma.menuItem.findMany({
     where: { isDeleted: false },
     orderBy: [{ kategori: 'asc' }, { nama: 'asc' }]

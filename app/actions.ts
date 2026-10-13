@@ -22,6 +22,7 @@ import {
 import { nextShiftExpenseTotal, normalizeShiftExpenseInput } from "@/lib/shift-expense"
 import { selectTargetManagerForFailedPinAttempt } from "@/lib/manager-pin-lock"
 import { paymentStatusForMethod, validatePaymentReference } from "@/lib/financial-controls"
+import { csvCell } from "@/lib/csv"
 
 // ─── Auth Helpers ───────────────────────────────────────────────────
 const ROLE_ORDER = ["PELAYAN", "BARTENDER", "DAPUR", "KASIR", "MANAJER"] as const
@@ -2053,7 +2054,21 @@ export async function exportDatabaseToCSV() {
   let csv = 'ID Bill,Nomor Bill,Waktu Buka,Waktu Tutup,Tipe,Sofa,Kasir,Subtotal,Diskon,Pajak,Service,Total,Metode Bayar\n'
   
   bills.forEach(b => {
-    csv += `"${b.id}","${b.nomorBill || ''}","${b.waktuBuka.toISOString()}","${b.waktuTutup?.toISOString() || ''}","${b.tipe}","${b.sofa?.nama || ''}","${b.kasir?.nama || ''}",${b.subtotal},${b.diskon},${b.pajak},${b.service},${b.total},"${b.metodeBayar || ''}"\n`
+    csv += [
+      b.id,
+      b.nomorBill,
+      b.waktuBuka.toISOString(),
+      b.waktuTutup?.toISOString(),
+      b.tipe,
+      b.sofa?.nama,
+      b.kasir?.nama,
+      b.subtotal,
+      b.diskon,
+      b.pajak,
+      b.service,
+      b.total,
+      b.metodeBayar
+    ].map(csvCell).join(",") + "\n"
   })
 
   return csv

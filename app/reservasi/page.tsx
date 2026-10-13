@@ -1,9 +1,11 @@
 import { prisma } from "@/lib/prisma"
 import ReservasiClient from "@/components/ReservasiClient"
+import { requirePageRole } from "@/lib/page-auth"
 
 export const instant = false
 
 export default async function ReservasiPage() {
+  await requirePageRole(["MANAJER", "KASIR"])
   const reservasis = await prisma.reservasi.findMany({
     orderBy: { jam: 'asc' },
     include: { sofa: true }

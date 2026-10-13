@@ -4,10 +4,12 @@ import { Landmark, Download, CreditCard, Flame, Activity, ShieldAlert, History, 
 
 import { getStartOfDayWIB, getEndOfDayWIB } from "@/lib/timezone"
 import { summarizeShiftCash } from "@/lib/shift-math"
+import { requirePageRole } from "@/lib/page-auth"
 
 export const instant = false
 
 export default async function SummaryPage({ searchParams }: { searchParams: Promise<{ date?: string }> }) {
+  await requirePageRole(["MANAJER"])
   await connection()
   const { date } = await searchParams
   

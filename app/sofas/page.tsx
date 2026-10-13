@@ -1,9 +1,11 @@
 import { prisma } from "@/lib/prisma"
 import SofaManagerClient from "@/components/SofaManagerClient"
+import { requirePageRole } from "@/lib/page-auth"
 
 export const instant = false
 
 export default async function SofasPage() {
+  await requirePageRole(["MANAJER", "KASIR"])
   const sofas = await prisma.sofa.findMany({
     where: { isDeleted: false },
     orderBy: { nama: 'asc' }

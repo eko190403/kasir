@@ -1,10 +1,16 @@
 import { prisma } from "@/lib/prisma"
 import StafClient from "@/components/StafClient"
+import { requirePageRole } from "@/lib/page-auth"
 
 export const instant = false
 
 export default async function StafPage() {
-  const users = await prisma.user.findMany({ where: { isDeleted: false }, orderBy: { nama: 'asc' } })
+  await requirePageRole(["MANAJER"])
+  const users = await prisma.user.findMany({
+    where: { isDeleted: false },
+    orderBy: { nama: 'asc' },
+    select: { id: true, nama: true, peran: true }
+  })
 
   return (
     <main className="mx-auto w-full max-w-7xl space-y-5 px-4 py-5 sm:px-6">

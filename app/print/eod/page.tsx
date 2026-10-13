@@ -2,6 +2,7 @@ import { prisma } from "@/lib/prisma"
 import { connection } from "next/server"
 import { getStartOfDayWIB, getEndOfDayWIB } from "@/lib/timezone"
 import { cashSalesForBill, summarizeShiftCash } from "@/lib/shift-math"
+import { requirePageRole } from "@/lib/page-auth"
 
 export const instant = false
 
@@ -10,6 +11,7 @@ export default async function PrintEODPage({
 }: {
   searchParams: Promise<{ date?: string }>
 }) {
+  await requirePageRole(["MANAJER"])
   await connection()
   const { date } = await searchParams
 

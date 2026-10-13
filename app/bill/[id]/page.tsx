@@ -1,23 +1,24 @@
 import { prisma } from "@/lib/prisma"
 import BillClient from "@/components/BillClient"
-import { getSession } from "@/lib/auth"
 import Link from "next/link"
 import { notFound } from "next/navigation"
+import { requirePageRole } from "@/lib/page-auth"
+import { canAccessBill } from "@/lib/bill-access"
 
 export const instant = false
 
 export default async function BillPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
-  
+  const actor = await requirePageRole(["PELAYAN", "BARTENDER", "DAPUR", "KASIR", "MANAJER"])
   const bill = await prisma.bill.findUnique({
     where: { id },
     include: { billItems: true, payments: true }
   })
   
   if (!bill) return notFound()
+  if (!canAccessBill(actor.peran, actor.id, bill.kasirId)) return notFound()
 
-  const session = await getSession()
-  const canOperatePayments = session?.user.peran === "KASIR" || session?.user.peran === "MANAJER"
+  const canOperatePayments = actor.peran === "KASIR" || actor.peran === "MANAJER"
   const menuItems = await prisma.menuItem.findMany({
     where: { isDeleted: false },
     orderBy: { kategori: 'asc' }

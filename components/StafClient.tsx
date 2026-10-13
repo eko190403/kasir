@@ -18,8 +18,9 @@ const ROLE_LABEL: Record<Peran, string> = {
 }
 
 const fieldClass = "mt-1 h-10 w-full rounded-md border border-zinc-700 bg-zinc-950 px-3 text-sm text-white placeholder:text-zinc-600 focus:border-amber-500 focus:outline-none"
+type StaffAccount = Pick<User, "id" | "nama" | "peran">
 
-export default function StafClient({ users }: { users: User[] }) {
+export default function StafClient({ users }: { users: StaffAccount[] }) {
   const router = useRouter()
   const [loading, setLoading] = useState<string | null>(null)
   const [showAddForm, setShowAddForm] = useState(false)
@@ -82,7 +83,7 @@ export default function StafClient({ users }: { users: User[] }) {
     setPin("")
   }
 
-  const startEdit = (user: User) => {
+  const startEdit = (user: StaffAccount) => {
     setEditId(user.id)
     setNama(user.nama)
     setPeran(user.peran)
