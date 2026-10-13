@@ -170,6 +170,12 @@ physical closing cash with cash expected from confirmed cash tenders and
 recalculate the closing difference. Never use that option on live accounting
 data.
 
+Only cashiers and managers can record or confirm bill payments. QRIS, debit, and
+transfer payments remain pending regardless of client-submitted status and
+require a transaction reference when a cashier or manager confirms them.
+Discount changes (including removing a discount) require a manager PIN and a
+reason recorded in the audit log.
+
 ## Catatan pengembangan
 
 Project ini masih dalam fase pengembangan aktif. Prioritas utama yang perlu terus dibenahi adalah:

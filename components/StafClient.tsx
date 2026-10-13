@@ -2,28 +2,42 @@
 
 import { addUser, editUser, deleteUser } from "@/app/actions"
 import { useRouter } from "next/navigation"
-import { useState } from "react"
+import { useMemo, useState } from "react"
 import { toast } from "sonner"
+import type { Peran, User } from "@prisma/client"
+import { Search, Plus, Pencil, Trash2 } from "lucide-react"
 
-const PERAN_LIST = ["KASIR", "BARTENDER", "DAPUR", "PELAYAN", "MANAJER"]
+const PERAN_LIST: Peran[] = ["KASIR", "BARTENDER", "DAPUR", "PELAYAN", "MANAJER"]
 
-const PERAN_COLOR: Record<string, string> = {
-  KASIR: "bg-emerald-900/50 text-emerald-400",
-  BARTENDER: "bg-blue-900/50 text-blue-400",
-  DAPUR: "bg-amber-900/50 text-amber-400",
-  PELAYAN: "bg-purple-900/50 text-purple-400",
-  MANAJER: "bg-red-900/50 text-red-400",
+const ROLE_LABEL: Record<Peran, string> = {
+  KASIR: "Kasir",
+  BARTENDER: "Bartender",
+  DAPUR: "Dapur",
+  PELAYAN: "Pelayan",
+  MANAJER: "Manajer",
 }
 
-export default function StafClient({ users }: { users: any[] }) {
+const fieldClass = "mt-1 h-10 w-full rounded-md border border-zinc-700 bg-zinc-950 px-3 text-sm text-white placeholder:text-zinc-600 focus:border-amber-500 focus:outline-none"
+
+export default function StafClient({ users }: { users: User[] }) {
   const router = useRouter()
   const [loading, setLoading] = useState<string | null>(null)
   const [showAddForm, setShowAddForm] = useState(false)
   const [editId, setEditId] = useState<string | null>(null)
+  const [search, setSearch] = useState("")
+  const [roleFilter, setRoleFilter] = useState<"SEMUA" | Peran>("SEMUA")
 
   const [nama, setNama] = useState("")
-  const [peran, setPeran] = useState("KASIR")
+  const [peran, setPeran] = useState<Peran>("KASIR")
   const [pin, setPin] = useState("")
+
+  const filteredUsers = useMemo(() => {
+    const normalizedSearch = search.trim().toLowerCase()
+    return users.filter(user =>
+      (roleFilter === "SEMUA" || user.peran === roleFilter) &&
+      user.nama.toLowerCase().includes(normalizedSearch)
+    )
+  }, [users, search, roleFilter])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -39,8 +53,8 @@ export default function StafClient({ users }: { users: any[] }) {
       }
       resetForm()
       router.refresh()
-    } catch (err: any) {
-      toast.error(err.message)
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : "Gagal menyimpan akun staf.")
     } finally {
       setLoading(null)
     }
@@ -53,8 +67,8 @@ export default function StafClient({ users }: { users: any[] }) {
       await deleteUser(id)
       toast.success('Staf berhasil dihapus.')
       router.refresh()
-    } catch (err: any) {
-      toast.error(err.message)
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : "Gagal menghapus akun staf.")
     } finally {
       setLoading(null)
     }
@@ -68,7 +82,7 @@ export default function StafClient({ users }: { users: any[] }) {
     setPin("")
   }
 
-  const startEdit = (user: any) => {
+  const startEdit = (user: User) => {
     setEditId(user.id)
     setNama(user.nama)
     setPeran(user.peran)
@@ -77,71 +91,106 @@ export default function StafClient({ users }: { users: any[] }) {
   }
 
   return (
-    <div className="space-y-6">
-      {!showAddForm ? (
-        <button
-          onClick={() => setShowAddForm(true)}
-          className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 rounded-lg font-bold text-sm"
-        >
-          + Tambah Staf Baru
-        </button>
-      ) : (
-        <form onSubmit={handleSubmit} className="bg-zinc-900 border border-zinc-800 p-5 rounded-xl space-y-4 max-w-md">
-          <h2 className="font-bold text-lg">{editId ? "Edit Staf" : "Tambah Staf Baru"}</h2>
-          <div>
-            <label className="text-xs text-zinc-400 block mb-1">Nama Lengkap</label>
-            <input
-              required type="text" value={nama}
-              onChange={e => setNama(e.target.value)}
-              className="w-full bg-zinc-800 border border-zinc-700 rounded-lg p-2 text-sm focus:outline-none focus:border-emerald-500"
-            />
+    <div className="space-y-4">
+      <section className="rounded-lg border border-zinc-800 bg-zinc-900 p-4 sm:p-5">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+          <div className="flex flex-col gap-2 sm:flex-row">
+            <label className="relative text-xs text-zinc-400">
+              Cari staf
+              <Search className="absolute left-3 top-[2.15rem] h-4 w-4 text-zinc-500" />
+              <input
+                value={search}
+                onChange={event => setSearch(event.target.value)}
+                placeholder="Nama staf"
+                className={`${fieldClass} pl-9 sm:w-64`}
+              />
+            </label>
+            <label className="text-xs text-zinc-400">
+              Jabatan
+              <select value={roleFilter} onChange={event => setRoleFilter(event.target.value as "SEMUA" | Peran)} className={`${fieldClass} sm:w-48`}>
+                <option value="SEMUA">Semua jabatan</option>
+                {PERAN_LIST.map(role => <option key={role} value={role}>{ROLE_LABEL[role]}</option>)}
+              </select>
+            </label>
           </div>
-          <div>
-            <label className="text-xs text-zinc-400 block mb-1">Jabatan / Peran</label>
-            <select
-              value={peran} onChange={e => setPeran(e.target.value)}
-              className="w-full bg-zinc-800 border border-zinc-700 rounded-lg p-2 text-sm focus:outline-none focus:border-emerald-500"
-            >
-              {PERAN_LIST.map(p => <option key={p} value={p}>{p}</option>)}
-            </select>
+          <button
+            onClick={() => setShowAddForm(current => !current)}
+            className="inline-flex h-10 items-center justify-center gap-2 rounded-md bg-amber-600 px-4 text-sm font-medium text-white transition-colors hover:bg-amber-500"
+          >
+            <Plus className="h-4 w-4" />
+            {showAddForm ? "Tutup formulir" : "Tambah staf"}
+          </button>
+        </div>
+      </section>
+
+      {showAddForm && (
+        <form onSubmit={handleSubmit} className="rounded-lg border border-zinc-800 bg-zinc-900 p-4 sm:p-5">
+          <div className="mb-4 border-b border-zinc-800 pb-3">
+            <h2 className="text-base font-semibold text-zinc-100">{editId ? "Ubah data staf" : "Staf baru"}</h2>
+            <p className="mt-1 text-sm text-zinc-500">Atur nama, jabatan, dan PIN untuk masuk.</p>
           </div>
-          <div>
-            <label className="text-xs text-zinc-400 block mb-1">PIN Login (6 digit)</label>
-            <input
-              type="password" value={pin}
-              placeholder={editId ? "Kosongkan jika tidak ingin mengubah PIN" : "Masukkan PIN"}
-              onChange={e => setPin(e.target.value)}
-              className="w-full bg-zinc-800 border border-zinc-700 rounded-lg p-2 text-sm focus:outline-none focus:border-emerald-500"
-            />
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            <label className="text-xs text-zinc-400">
+              Nama lengkap
+              <input required type="text" value={nama} onChange={event => setNama(event.target.value)} className={fieldClass} />
+            </label>
+            <label className="text-xs text-zinc-400">
+              Jabatan
+              <select value={peran} onChange={event => setPeran(event.target.value as Peran)} className={fieldClass}>
+                {PERAN_LIST.map(role => <option key={role} value={role}>{ROLE_LABEL[role]}</option>)}
+              </select>
+            </label>
+            <label className="text-xs text-zinc-400">
+              PIN login <span className="text-zinc-600">(4–6 digit)</span>
+              <input
+                type="password"
+                inputMode="numeric"
+                pattern="[0-9]{4,6}"
+                maxLength={6}
+                required={!editId}
+                value={pin}
+                placeholder={editId ? "Kosongkan jika tidak diubah" : "Masukkan PIN"}
+                onChange={event => setPin(event.target.value.replace(/\D/g, ""))}
+                className={fieldClass}
+              />
+            </label>
           </div>
-          <div className="flex gap-2 pt-2">
-            <button type="button" onClick={resetForm} className="px-4 py-2 bg-zinc-700 rounded-lg text-sm">Batal</button>
-            <button type="submit" disabled={loading === "submit"} className="flex-1 bg-emerald-600 hover:bg-emerald-500 font-bold rounded-lg text-sm">
-              Simpan
-            </button>
+          <div className="mt-5 flex justify-end gap-2 border-t border-zinc-800 pt-4">
+            <button type="button" onClick={resetForm} className="h-10 rounded-md border border-zinc-700 px-4 text-sm font-medium text-zinc-300 transition-colors hover:bg-zinc-800">Batal</button>
+            <button type="submit" disabled={loading === "submit"} className="h-10 rounded-md bg-amber-600 px-4 text-sm font-medium text-white transition-colors hover:bg-amber-500 disabled:opacity-50">{loading === "submit" ? "Menyimpan..." : "Simpan data"}</button>
           </div>
         </form>
       )}
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {users.map(user => (
-          <div key={user.id} className="bg-zinc-900 border border-zinc-800 p-5 rounded-xl flex flex-col justify-between">
-            <div className="mb-4">
-              <h3 className="font-bold text-lg">{user.nama}</h3>
-              <span className={`text-xs px-2 py-0.5 rounded-full mt-2 inline-block font-medium ${PERAN_COLOR[user.peran] || 'bg-zinc-800 text-zinc-400'}`}>
-                {user.peran}
-              </span>
+      <div className="flex items-center justify-between">
+        <h2 className="text-base font-semibold text-zinc-100">Daftar staf</h2>
+        <span className="text-xs tabular-nums text-zinc-500">{filteredUsers.length} dari {users.length}</span>
+      </div>
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
+        {filteredUsers.map(user => (
+          <article key={user.id} className="flex min-h-36 flex-col rounded-lg border border-zinc-800 bg-zinc-900 p-4">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <h3 className="truncate text-base font-semibold text-zinc-100">{user.nama}</h3>
+                <p className="mt-1 text-xs text-zinc-500">Akun staf</p>
+              </div>
+              <span className="shrink-0 rounded border border-zinc-700 px-2 py-1 text-xs font-medium text-zinc-300">{ROLE_LABEL[user.peran]}</span>
             </div>
-            <div className="flex gap-2 border-t border-zinc-800 pt-3">
-              <button onClick={() => startEdit(user)} className="text-xs text-blue-400 hover:text-blue-300 flex-1 text-left">Edit</button>
-              <button onClick={() => handleDelete(user.id)} disabled={loading === user.id} className="text-xs text-red-400 hover:text-red-300">Hapus</button>
+            <div className="mt-auto flex justify-end gap-1 border-t border-zinc-800 pt-3">
+              <button onClick={() => startEdit(user)} className="inline-flex h-8 items-center gap-1.5 rounded-md px-2 text-xs font-medium text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-zinc-100">
+                <Pencil className="h-3.5 w-3.5" /> Ubah
+              </button>
+              <button onClick={() => handleDelete(user.id)} disabled={loading === user.id} className="inline-flex h-8 items-center gap-1.5 rounded-md px-2 text-xs font-medium text-zinc-500 transition-colors hover:bg-red-950/40 hover:text-red-300 disabled:opacity-50">
+                <Trash2 className="h-3.5 w-3.5" /> Hapus
+              </button>
             </div>
-          </div>
+          </article>
         ))}
 
-        {users.length === 0 && (
-          <div className="col-span-3 text-zinc-500 italic text-sm py-8 text-center">
-            Belum ada data staf. Klik tombol di atas untuk menambahkan.
+        {filteredUsers.length === 0 && (
+          <div className="col-span-full rounded-lg border border-dashed border-zinc-800 px-5 py-10 text-center">
+            <p className="text-sm font-medium text-zinc-300">Tidak ada staf ditemukan.</p>
+            <p className="mt-1 text-sm text-zinc-500">{users.length === 0 ? "Tambahkan akun staf untuk mulai mengelola akses." : "Ubah pencarian atau filter jabatan."}</p>
           </div>
         )}
       </div>

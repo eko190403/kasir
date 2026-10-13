@@ -23,7 +23,7 @@ export default async function ShiftPage() {
     include: {
       kasir: true,
       bills: {
-        where: { status: "LUNAS" },
+        where: { status: { in: ["LUNAS", "BATAL"] } },
         select: {
           total: true,
           metodeBayar: true,
@@ -31,7 +31,8 @@ export default async function ShiftPage() {
             select: { metode: true, jumlah: true, status: true }
           }
         }
-      }
+      },
+      refunds: { select: { metode: true, jumlah: true } }
     }
   })
 
@@ -43,9 +44,11 @@ export default async function ShiftPage() {
     : []
 
   return (
-    <main className="container mx-auto p-4 space-y-6">
-      <header className="pb-4 border-b border-zinc-800">
-        <h1 className="text-3xl font-bold">Manajemen Shift</h1>
+    <main className="mx-auto w-full max-w-7xl space-y-5 px-4 py-5 sm:px-6">
+      <header className="border-b border-zinc-800 pb-4">
+        <p className="mb-1 text-xs font-medium text-amber-400">OPERASIONAL · KAS</p>
+        <h1 className="text-2xl font-semibold tracking-tight text-white">Shift</h1>
+        <p className="mt-1 text-sm text-zinc-400">Pantau kasir bertugas, arus kas, dan penutupan shift.</p>
       </header>
       <ShiftClient shifts={shifts} users={users} currentRole={currentRole} currentUserId={actor.id} />
     </main>

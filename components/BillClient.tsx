@@ -9,6 +9,7 @@ import { isTimeWithinRange } from "@/lib/timezone"
 
 export default function BillClient({ 
   billId, 
+  canOperatePayments,
   menuItems,
   initialBillItems,
   initialPayments,
@@ -16,6 +17,7 @@ export default function BillClient({
   totals
 }: { 
   billId: string,  
+  canOperatePayments: boolean,
   menuItems: any[],
   initialBillItems: any[],
   initialPayments: any[],
@@ -40,6 +42,7 @@ export default function BillClient({
   const [splitQris, setSplitQris] = useState("")
   const [splitDebit, setSplitDebit] = useState("")
   const [splitTransfer, setSplitTransfer] = useState("")
+  const [paymentReferences, setPaymentReferences] = useState<Record<string, string>>({})
   const [uangDiterimaInput, setUangDiterimaInput] = useState<{ amount: string; due: number } | null>(null)
   const [legacyDepositMetode, setLegacyDepositMetode] = useState<"TUNAI" | "KARTU" | "QRIS" | "DEBIT" | "TRANSFER">("TUNAI")
   const totalSudahDibayar = initialPayments
@@ -55,6 +58,8 @@ export default function BillClient({
   // Discount State
   const [showDiscount, setShowDiscount] = useState(false)
   const [diskonInput, setDiskonInput] = useState(totals.diskon.toString())
+  const [diskonAlasan, setDiskonAlasan] = useState("")
+  const [diskonPin, setDiskonPin] = useState("")
 
   // Action State (Return, Void, Comp)
   const [actionItemId, setActionItemId] = useState<string | null>(null)
@@ -130,6 +135,10 @@ export default function BillClient({
   }
 
   const handleClose = async () => {
+    if (!canOperatePayments) {
+      toast.error("Hanya kasir atau manajer yang dapat mencatat pembayaran.")
+      return
+    }
     if (jumlahPending > 0) {
       toast.info('Konfirmasi pembayaran yang masih pending sebelum membuat pembayaran baru atau menutup bill.')
       return
@@ -138,31 +147,25 @@ export default function BillClient({
     const totalTagihan = sisaPembayaran
     const paymentEntries = paymentMethod === "SPLIT"
       ? [
-        { metode: "TUNAI" as const, jumlah: Number(splitCash) || 0, status: "SUDAH_BAYAR" as const },
-        { metode: "KARTU" as const, jumlah: Number(splitCard) || 0, status: "SUDAH_BAYAR" as const },
-        { metode: "QRIS" as const, jumlah: Number(splitQris) || 0, status: "PENDING" as const },
-        { metode: "DEBIT" as const, jumlah: Number(splitDebit) || 0, status: "PENDING" as const },
-        { metode: "TRANSFER" as const, jumlah: Number(splitTransfer) || 0, status: "PENDING" as const },
+        { metode: "TUNAI" as const, jumlah: Number(splitCash) || 0 },
+        { metode: "KARTU" as const, jumlah: Number(splitCard) || 0 },
+        { metode: "QRIS" as const, jumlah: Number(splitQris) || 0 },
+        { metode: "DEBIT" as const, jumlah: Number(splitDebit) || 0 },
+        { metode: "TRANSFER" as const, jumlah: Number(splitTransfer) || 0 },
       ].filter(payment => payment.jumlah > 0)
       : totalTagihan > 0
         ? [{
             metode: paymentMethod,
-            jumlah: totalTagihan,
-            status: (paymentMethod === "QRIS" || paymentMethod === "DEBIT" || paymentMethod === "TRANSFER") ? "PENDING" as const : "SUDAH_BAYAR" as const
+            jumlah: totalTagihan
           }]
         : []
 
-    const paymentEntriesWithStatus = paymentEntries.map(payment => ({
-      ...payment,
-      status: payment.metode === "TUNAI" || payment.metode === "KARTU" ? "SUDAH_BAYAR" as const : "PENDING" as const
-    }))
-
-    const totalAlokasi = paymentEntriesWithStatus.reduce((sum, payment) => sum + payment.jumlah, 0)
+    const totalAlokasi = paymentEntries.reduce((sum, payment) => sum + payment.jumlah, 0)
     if (totalAlokasi !== totalTagihan) {
       toast.error("Alokasi pembayaran harus sama dengan sisa tagihan.")
       return
     }
-    const alokasiTunai = paymentEntriesWithStatus
+    const alokasiTunai = paymentEntries
       .filter(payment => payment.metode === "TUNAI")
       .reduce((sum, payment) => sum + payment.jumlah, 0)
     const terima = alokasiTunai > 0 ? (Number(uangDiterima) || 0) : undefined
@@ -172,7 +175,9 @@ export default function BillClient({
       return
     }
 
-    const requiresManualConfirmation = paymentEntriesWithStatus.some(payment => payment.status === 'PENDING')
+    const requiresManualConfirmation = paymentEntries.some(payment =>
+      payment.metode === "QRIS" || payment.metode === "DEBIT" || payment.metode === "TRANSFER"
+    )
     const confirmationPrompt = requiresManualConfirmation
       ? `Pembayaran non-tunai akan dicatat menunggu konfirmasi. Setelah bukti transfer/QRIS masuk, konfirmasi di daftar pembayaran sebelum menutup bill.`
       : totalTagihan === 0
@@ -183,7 +188,7 @@ export default function BillClient({
 
     setLoading(true)
     try {
-      const result = await closeBill(billId, paymentMethod, terima, paymentEntriesWithStatus)
+      const result = await closeBill(billId, paymentMethod, terima, paymentEntries)
       if (result?.status === 'PENDING_CONFIRMATION') {
         toast.info('Pembayaran non-tunai tersimpan menunggu konfirmasi kasir.')
         router.refresh()
@@ -199,9 +204,14 @@ export default function BillClient({
   }
 
   const handleConfirmPendingPayment = async (paymentId: string) => {
+    if (!canOperatePayments) {
+      toast.error("Hanya kasir atau manajer yang dapat mengonfirmasi pembayaran.")
+      return
+    }
+    const reference = paymentReferences[paymentId] ?? ""
     setLoading(true)
     try {
-      const result = await confirmPayment(paymentId)
+      const result = await confirmPayment(paymentId, reference)
       if (result.closed) {
         toast.success('Pembayaran lunas. Bill ditutup dan meja dikosongkan.')
         window.open(`/print/receipt/${billId}`, '_blank')
@@ -284,11 +294,17 @@ export default function BillClient({
   }
 
   const handleDiscount = async () => {
+    if (!diskonAlasan.trim() || !diskonPin.trim()) {
+      toast.warning("Alasan dan PIN Manajer wajib diisi untuk mengubah diskon.")
+      return
+    }
     setLoading(true)
     try {
-      await applyDiscount(billId, parseInt(diskonInput) || 0)
+      await applyDiscount(billId, parseInt(diskonInput) || 0, diskonAlasan, diskonPin)
       toast.success('Diskon berhasil diterapkan.')
       setShowDiscount(false)
+      setDiskonAlasan("")
+      setDiskonPin("")
       router.refresh()
     } catch(err: any) {
       toast.error(err.message)
@@ -462,15 +478,48 @@ export default function BillClient({
             </button>
           </div>
           {showDiscount && (
-            <div className="flex gap-2 items-center">
-              <span className="text-xs text-zinc-500">Rp</span>
-              <input 
-                type="number" min="0"
-                className="flex-1 bg-zinc-800 border border-zinc-700 rounded p-1 text-sm"
-                value={diskonInput}
-                onChange={e => setDiskonInput(e.target.value)}
+            <div className="space-y-2 rounded border border-amber-900/60 bg-amber-950/20 p-3">
+              <p className="text-xs text-amber-200">Perubahan diskon memerlukan alasan dan PIN Manajer. Diskon nol juga membutuhkan otorisasi untuk menghapus diskon lama.</p>
+              <label className="flex items-center gap-2 text-xs text-zinc-300">
+                <span>Diskon (Rp)</span>
+                <input
+                  type="number" min="0" step="1"
+                  className="min-w-0 flex-1 bg-zinc-800 border border-zinc-700 rounded p-1 text-sm"
+                  value={diskonInput}
+                  onChange={e => setDiskonInput(e.target.value)}
+                />
+              </label>
+              <input
+                type="text"
+                value={diskonAlasan}
+                onChange={event => setDiskonAlasan(event.target.value)}
+                placeholder="Alasan diskon"
+                aria-label="Alasan diskon"
+                className="w-full bg-zinc-800 border border-zinc-700 rounded p-2 text-sm"
               />
-              <button onClick={handleDiscount} disabled={loading} className="px-3 py-1 bg-emerald-600 rounded text-xs font-bold">Set</button>
+              <input
+                type="password"
+                inputMode="numeric"
+                value={diskonPin}
+                onChange={event => setDiskonPin(event.target.value)}
+                placeholder="PIN Manajer"
+                aria-label="PIN Manajer untuk diskon"
+                className="w-full bg-zinc-800 border border-zinc-700 rounded p-2 text-sm"
+              />
+              <div className="flex justify-end gap-2">
+                <button
+                  onClick={() => {
+                    setShowDiscount(false)
+                    setDiskonAlasan("")
+                    setDiskonPin("")
+                  }}
+                  disabled={loading}
+                  className="px-3 py-1 bg-zinc-700 rounded text-xs"
+                >
+                  Batal
+                </button>
+                <button onClick={handleDiscount} disabled={loading} className="px-3 py-1 bg-emerald-600 rounded text-xs font-bold">Set</button>
+              </div>
             </div>
           )}
 
@@ -498,12 +547,20 @@ export default function BillClient({
                 <div className="rounded-lg border border-amber-900/60 bg-amber-950/20 p-2 space-y-2">
                   <div className="text-[10px] font-bold uppercase tracking-wide text-amber-300">Menunggu konfirmasi</div>
                   {initialPayments.filter(payment => payment.status === 'PENDING').map((payment, index) => (
-                    <div key={`${payment.id ?? payment.metode}-${index}`} className="flex items-center justify-between gap-2 text-xs text-zinc-200">
+                    <div key={`${payment.id ?? payment.metode}-${index}`} className="grid grid-cols-1 sm:grid-cols-[1fr_1fr_auto] items-center gap-2 text-xs text-zinc-200">
                       <span>{payment.metode} · Rp {payment.jumlah.toLocaleString('id-ID')}</span>
+                      <input
+                        type="text"
+                        value={paymentReferences[payment.id] ?? ""}
+                        onChange={event => setPaymentReferences(references => ({ ...references, [payment.id]: event.target.value }))}
+                        placeholder="Referensi transaksi"
+                        aria-label={`Referensi transaksi ${payment.metode}`}
+                        className="min-w-0 rounded border border-zinc-700 bg-zinc-800 px-2 py-1"
+                      />
                       <button
                         onClick={() => handleConfirmPendingPayment(payment.id)}
                         className="rounded bg-amber-600 px-2 py-1 font-bold text-white disabled:opacity-50"
-                        disabled={loading}
+                        disabled={!canOperatePayments || loading || (paymentReferences[payment.id] ?? "").trim().length < 3}
                       >
                         Konfirmasi
                       </button>
@@ -549,7 +606,7 @@ export default function BillClient({
                   </span>
                   <button
                     onClick={() => handleApplyReservationDeposit(reservation.id)}
-                    disabled={loading || reservation.deposit > sisaPembayaran}
+                    disabled={!canOperatePayments || loading || reservation.deposit > sisaPembayaran}
                     className="rounded bg-blue-700 px-2 py-1 font-bold text-white disabled:opacity-50"
                   >
                     Terapkan deposit
@@ -574,13 +631,16 @@ export default function BillClient({
                 </button>
                 <button 
                   onClick={() => setShowPayment(true)}
-                  disabled={loading || initialBillItems.length === 0 || jumlahPending > 0}
+                  disabled={!canOperatePayments || loading || initialBillItems.length === 0 || jumlahPending > 0}
                   className="flex-1 bg-amber-600 hover:bg-amber-500 text-white font-bold py-3 rounded-lg disabled:opacity-50 transition flex items-center justify-center gap-2"
                 >
-                  {jumlahPending > 0 ? 'Menunggu Konfirmasi' : sudahLunas ? 'Tutup Bill' : 'Bayar (Checkout)'}
+                  {!canOperatePayments ? 'Pembayaran oleh Kasir' : jumlahPending > 0 ? 'Menunggu Konfirmasi' : sudahLunas ? 'Tutup Bill' : 'Bayar (Checkout)'}
                   <span className="text-xs bg-amber-800/70 px-1.5 py-0.5 rounded font-mono">F2</span>
                 </button>
               </div>
+              {!canOperatePayments && (
+                <p className="mt-2 text-xs text-amber-400">Minta kasir atau manajer mencatat/mengonfirmasi pembayaran.</p>
+              )}
 
               {/* Keyboard shortcut hints */}
               <div className="mt-2 flex flex-wrap gap-2 text-[10px] text-zinc-600">

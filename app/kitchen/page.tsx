@@ -19,9 +19,11 @@ export default async function KitchenPage() {
   })
 
   return (
-    <main className="container mx-auto p-4 space-y-6">
-      <header className="flex justify-between items-center pb-4 border-b border-zinc-800">
-        <h1 className="text-3xl font-bold">Layar Dapur (Makanan)</h1>
+    <main className="mx-auto w-full max-w-[1600px] space-y-5 px-4 py-5 sm:px-6">
+      <header className="border-b border-zinc-800 pb-4">
+        <p className="mb-1 text-xs font-medium text-amber-400">OPERASIONAL · PRODUKSI</p>
+        <h1 className="text-2xl font-semibold tracking-tight text-white">Dapur</h1>
+        <p className="mt-1 text-sm text-zinc-400">Pesanan makanan yang perlu disiapkan.</p>
       </header>
       <RealtimeBoard kategori="MAKANAN" initialItems={items} />
     </main>

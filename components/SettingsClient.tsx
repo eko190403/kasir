@@ -5,6 +5,14 @@ import { updateSetting, verifyAndUpdatePin } from "@/app/actions"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
 
+const fieldClass = "h-10 w-full rounded-md border border-zinc-700 bg-zinc-950 px-3 text-sm text-zinc-100 placeholder:text-zinc-600 focus:border-amber-500 focus:outline-none"
+const saveButtonClass = "h-10 shrink-0 rounded-md bg-amber-600 px-4 text-sm font-medium text-white transition-colors hover:bg-amber-500 disabled:cursor-not-allowed disabled:opacity-50"
+const cardClass = "space-y-4 rounded-lg border border-zinc-800 bg-zinc-900 p-4 sm:p-5"
+
+function getErrorMessage(error: unknown, fallback: string) {
+  return error instanceof Error ? error.message : fallback
+}
+
 export default function SettingsClient({ settings }: { settings: { kunci: string, nilai: string }[] }) {
   const router = useRouter()
   const [loading, setLoading] = useState(false)
@@ -31,8 +39,8 @@ export default function SettingsClient({ settings }: { settings: { kunci: string
       await updateSetting(kunci, nilai)
       toast.success('Pengaturan berhasil disimpan!')
       router.refresh()
-    } catch (err: any) {
-      toast.error(err.message)
+    } catch (err: unknown) {
+      toast.error(getErrorMessage(err, "Gagal menyimpan pengaturan."))
     } finally {
       setLoading(false)
     }
@@ -51,122 +59,141 @@ export default function SettingsClient({ settings }: { settings: { kunci: string
       setPinLama(''); setPinBaru(''); setPinKonfirmasi('')
       toast.success('PIN Manajer berhasil diubah!')
       router.refresh()
-    } catch (err: any) {
-      setPinError(err.message)
+    } catch (err: unknown) {
+      setPinError(getErrorMessage(err, "Gagal mengubah PIN."))
     } finally {
       setLoading(false)
     }
   }
 
   return (
-    <div className="max-w-lg space-y-6">
-      {/* Identitas Bar */}
-      <div className="bg-zinc-900 border border-zinc-800 p-5 rounded-xl space-y-3">
-        <h3 className="font-bold">Identitas Bar (untuk Struk)</h3>
-        <div>
-          <label className="text-xs text-zinc-400 block mb-1">Nama Bar</label>
-          <div className="flex gap-2">
-            <input type="text" value={namaBar} onChange={e => setNamaBar(e.target.value)}
-              className="flex-1 bg-zinc-800 border border-zinc-700 rounded-lg p-2 text-sm focus:outline-none focus:border-emerald-500" />
-            <button onClick={() => handleSave('NAMA_BAR', namaBar)} disabled={loading} className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 rounded-lg text-sm font-bold">Simpan</button>
+    <div className="grid w-full grid-cols-1 gap-4 lg:grid-cols-2">
+      <section className={cardClass}>
+        <div className="border-b border-zinc-800 pb-3">
+          <h2 className="text-base font-semibold text-zinc-100">Identitas usaha</h2>
+          <p className="mt-1 text-sm text-zinc-500">Informasi yang akan dicetak pada struk transaksi.</p>
+        </div>
+        <label className="block text-xs text-zinc-400">
+          Nama bar
+          <div className="mt-1 flex gap-2">
+            <input type="text" value={namaBar} onChange={e => setNamaBar(e.target.value)} className={fieldClass} />
+            <button onClick={() => handleSave('NAMA_BAR', namaBar)} disabled={loading} className={saveButtonClass}>Simpan</button>
           </div>
-        </div>
-        <div>
-          <label className="text-xs text-zinc-400 block mb-1">Alamat / Kontak</label>
-          <div className="flex gap-2">
-            <input type="text" value={alamatBar} onChange={e => setAlamatBar(e.target.value)}
-              placeholder="Jl. Sudirman No. 1 | Telp: 0812..."
-              className="flex-1 bg-zinc-800 border border-zinc-700 rounded-lg p-2 text-sm focus:outline-none focus:border-emerald-500" />
-            <button onClick={() => handleSave('ALAMAT_BAR', alamatBar)} disabled={loading} className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 rounded-lg text-sm font-bold">Simpan</button>
+        </label>
+        <label className="block text-xs text-zinc-400">
+          Alamat / kontak
+          <div className="mt-1 flex gap-2">
+            <input type="text" value={alamatBar} onChange={e => setAlamatBar(e.target.value)} placeholder="Alamat atau nomor telepon" className={fieldClass} />
+            <button onClick={() => handleSave('ALAMAT_BAR', alamatBar)} disabled={loading} className={saveButtonClass}>Simpan</button>
           </div>
-        </div>
-      </div>
+        </label>
+      </section>
 
-      {/* Pajak */}
-      <div className="bg-zinc-900 border border-zinc-800 p-5 rounded-xl space-y-3">
-        <h3 className="font-bold">Pajak (%)</h3>
-        <p className="text-xs text-zinc-400">Persentase pajak yang diterapkan pada setiap bill.</p>
-        <div className="flex gap-2">
-          <input type="number" min="0" max="100" step="any" value={pajak} onChange={e => setPajak(e.target.value)}
-            className="flex-1 bg-zinc-800 border border-zinc-700 rounded-lg p-2 text-sm focus:outline-none focus:border-emerald-500" />
-          <button onClick={() => handleSave('PAJAK', pajak)} disabled={loading} className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 rounded-lg text-sm font-bold">Simpan</button>
+      <section className={cardClass}>
+        <div className="border-b border-zinc-800 pb-3">
+          <h2 className="text-base font-semibold text-zinc-100">Pajak dan layanan</h2>
+          <p className="mt-1 text-sm text-zinc-500">Persentase yang diterapkan pada bill.</p>
         </div>
-      </div>
+        <label className="block text-xs text-zinc-400">
+          Pajak (%)
+          <div className="mt-1 flex gap-2">
+            <input type="number" min="0" max="100" step="any" value={pajak} onChange={e => setPajak(e.target.value)} className={fieldClass} />
+            <button onClick={() => handleSave('PAJAK', pajak)} disabled={loading} className={saveButtonClass}>Simpan</button>
+          </div>
+        </label>
+        <label className="block text-xs text-zinc-400">
+          Service charge (%)
+          <div className="mt-1 flex gap-2">
+            <input type="number" min="0" max="100" step="any" value={serviceCharge} onChange={e => setServiceCharge(e.target.value)} className={fieldClass} />
+            <button onClick={() => handleSave('SERVICE_CHARGE', serviceCharge)} disabled={loading} className={saveButtonClass}>Simpan</button>
+          </div>
+        </label>
+      </section>
 
-      {/* Service Charge */}
-      <div className="bg-zinc-900 border border-zinc-800 p-5 rounded-xl space-y-3">
-        <h3 className="font-bold">Service Charge (%)</h3>
-        <p className="text-xs text-zinc-400">Persentase biaya layanan.</p>
-        <div className="flex gap-2">
-          <input type="number" min="0" max="100" step="any" value={serviceCharge} onChange={e => setServiceCharge(e.target.value)}
-            className="flex-1 bg-zinc-800 border border-zinc-700 rounded-lg p-2 text-sm focus:outline-none focus:border-emerald-500" />
-          <button onClick={() => handleSave('SERVICE_CHARGE', serviceCharge)} disabled={loading} className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 rounded-lg text-sm font-bold">Simpan</button>
+      <section className={cardClass}>
+        <div className="border-b border-zinc-800 pb-3">
+          <h2 className="text-base font-semibold text-zinc-100">Pembulatan transaksi</h2>
+          <p className="mt-1 text-sm text-zinc-500">Jika aktif, total akhir dibulatkan ke ratusan terdekat.</p>
         </div>
-      </div>
-
-      {/* Pembulatan */}
-      <div className="bg-zinc-900 border border-zinc-800 p-5 rounded-xl space-y-3">
-        <h3 className="font-bold">Pembulatan ke Ratusan</h3>
-        <p className="text-xs text-zinc-400">Jika diaktifkan, total akhir akan dibulatkan ke ratusan terdekat.</p>
-        <div className="flex items-center gap-4">
-          <button 
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <p className="text-sm font-medium text-zinc-200">Pembulatan ke ratusan</p>
+            <p className="mt-1 text-xs text-zinc-500">Status saat ini: {pembulatan === 'true' ? 'Aktif' : 'Nonaktif'}</p>
+          </div>
+          <button
             onClick={() => { const val = pembulatan === 'true' ? 'false' : 'true'; setPembulatan(val); handleSave('PEMBULATAN_RATUSAN', val) }}
             disabled={loading}
-            className={`px-6 py-2 rounded-lg text-sm font-bold transition ${pembulatan === 'true' ? 'bg-emerald-600' : 'bg-zinc-700'}`}
+            aria-pressed={pembulatan === 'true'}
+            className={`h-10 min-w-24 rounded-md border px-3 text-sm font-medium transition-colors disabled:opacity-50 ${pembulatan === 'true' ? 'border-emerald-800 bg-emerald-950/40 text-emerald-300 hover:bg-emerald-950/70' : 'border-zinc-700 bg-zinc-800 text-zinc-300 hover:bg-zinc-700'}`}
           >
-            {pembulatan === 'true' ? 'AKTIF' : 'NONAKTIF'}
+            {pembulatan === 'true' ? 'Aktif' : 'Nonaktif'}
           </button>
         </div>
-      </div>
+      </section>
 
-      {/* Happy Hour */}
-      <div className="bg-zinc-900 border border-zinc-800 p-5 rounded-xl space-y-3">
-        <h3 className="font-bold flex items-center gap-2">⏱️ Happy Hour / Promo Jam Tertentu</h3>
-        <p className="text-xs text-zinc-400">Jika aktif, setiap item yang dipesan di jam ini otomatis mendapat diskon.</p>
-        <div className="flex items-center gap-4 mb-3">
-          <button 
+      <section className={cardClass}>
+        <div className="border-b border-zinc-800 pb-3">
+          <h2 className="text-base font-semibold text-zinc-100">Happy hour</h2>
+          <p className="mt-1 text-sm text-zinc-500">Diskon otomatis untuk item yang dipesan pada rentang waktu promo.</p>
+        </div>
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <p className="text-sm font-medium text-zinc-200">Promo waktu tertentu</p>
+            <p className="mt-1 text-xs text-zinc-500">Status saat ini: {hhAktif === 'true' ? 'Aktif' : 'Nonaktif'}</p>
+          </div>
+          <button
             onClick={() => { const val = hhAktif === 'true' ? 'false' : 'true'; setHhAktif(val); handleSave('HAPPY_HOUR_AKTIF', val) }}
             disabled={loading}
-            className={`px-6 py-2 rounded-lg text-sm font-bold transition ${hhAktif === 'true' ? 'bg-emerald-600' : 'bg-zinc-700'}`}
+            aria-pressed={hhAktif === 'true'}
+            className={`h-10 min-w-24 rounded-md border px-3 text-sm font-medium transition-colors disabled:opacity-50 ${hhAktif === 'true' ? 'border-emerald-800 bg-emerald-950/40 text-emerald-300 hover:bg-emerald-950/70' : 'border-zinc-700 bg-zinc-800 text-zinc-300 hover:bg-zinc-700'}`}
           >
-            {hhAktif === 'true' ? 'AKTIF' : 'NONAKTIF'}
+            {hhAktif === 'true' ? 'Aktif' : 'Nonaktif'}
           </button>
         </div>
         {hhAktif === 'true' && (
-          <div className="grid grid-cols-3 gap-3">
-            <div>
-              <label className="text-xs text-zinc-500 mb-1 block">Jam Mulai</label>
-              <input type="time" value={hhMulai} onChange={e => setHhMulai(e.target.value)} onBlur={() => handleSave('HAPPY_HOUR_MULAI', hhMulai)} className="w-full bg-zinc-800 border border-zinc-700 rounded p-2 text-sm text-white focus:outline-none focus:border-emerald-500" />
-            </div>
-            <div>
-              <label className="text-xs text-zinc-500 mb-1 block">Jam Selesai</label>
-              <input type="time" value={hhSelesai} onChange={e => setHhSelesai(e.target.value)} onBlur={() => handleSave('HAPPY_HOUR_SELESAI', hhSelesai)} className="w-full bg-zinc-800 border border-zinc-700 rounded p-2 text-sm text-white focus:outline-none focus:border-emerald-500" />
-            </div>
-            <div>
-              <label className="text-xs text-zinc-500 mb-1 block">Diskon Item (%)</label>
-              <input type="number" min="1" max="100" value={hhDiskon} onChange={e => setHhDiskon(e.target.value)} onBlur={() => handleSave('HAPPY_HOUR_DISKON', hhDiskon)} className="w-full bg-zinc-800 border border-zinc-700 rounded p-2 text-sm text-white focus:outline-none focus:border-emerald-500" />
-            </div>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+            <label className="text-xs text-zinc-400">
+              Jam mulai
+              <input type="time" value={hhMulai} onChange={e => setHhMulai(e.target.value)} onBlur={() => handleSave('HAPPY_HOUR_MULAI', hhMulai)} className={`${fieldClass} mt-1`} />
+            </label>
+            <label className="text-xs text-zinc-400">
+              Jam selesai
+              <input type="time" value={hhSelesai} onChange={e => setHhSelesai(e.target.value)} onBlur={() => handleSave('HAPPY_HOUR_SELESAI', hhSelesai)} className={`${fieldClass} mt-1`} />
+            </label>
+            <label className="text-xs text-zinc-400">
+              Diskon item (%)
+              <input type="number" min="1" max="100" value={hhDiskon} onChange={e => setHhDiskon(e.target.value)} onBlur={() => handleSave('HAPPY_HOUR_DISKON', hhDiskon)} className={`${fieldClass} mt-1`} />
+            </label>
           </div>
         )}
-      </div>
+      </section>
 
-      {/* Ganti PIN Manajer */}
-      <div className="bg-zinc-900 border border-amber-800/40 p-5 rounded-xl space-y-3">
-        <h3 className="font-bold text-amber-400">🔐 Ganti PIN Manajer</h3>
-        <p className="text-xs text-zinc-400">PIN akun manajer digunakan untuk otorisasi sensitif. Gunakan PIN 4–6 digit dan jangan membagikannya.</p>
-        <div className="space-y-2">
-          <input type="password" placeholder="PIN Lama" value={pinLama} onChange={e => setPinLama(e.target.value)}
-            className="w-full bg-zinc-800 border border-zinc-700 rounded-lg p-2 text-sm focus:outline-none focus:border-amber-500" />
-          <input type="password" inputMode="numeric" maxLength={6} placeholder="PIN Baru (4–6 digit)" value={pinBaru} onChange={e => setPinBaru(e.target.value)}
-            className="w-full bg-zinc-800 border border-zinc-700 rounded-lg p-2 text-sm focus:outline-none focus:border-amber-500" />
-          <input type="password" placeholder="Konfirmasi PIN Baru" value={pinKonfirmasi} onChange={e => setPinKonfirmasi(e.target.value)}
-            className="w-full bg-zinc-800 border border-zinc-700 rounded-lg p-2 text-sm focus:outline-none focus:border-amber-500" />
-          {pinError && <p className="text-red-400 text-xs">{pinError}</p>}
-          <button onClick={handleGantiPin} disabled={loading} className="w-full py-2 bg-amber-600 hover:bg-amber-500 rounded-lg text-sm font-bold transition">
-            Ganti PIN
+      <section className={`${cardClass} lg:col-span-2`}>
+        <div className="border-b border-zinc-800 pb-3">
+          <h2 className="text-base font-semibold text-zinc-100">Keamanan akun manajer</h2>
+          <p className="mt-1 text-sm text-zinc-500">PIN dipakai untuk otorisasi tindakan sensitif. Gunakan 4–6 digit dan jangan membagikannya.</p>
+        </div>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+          <label className="text-xs text-zinc-400">
+            PIN lama
+            <input type="password" autoComplete="current-password" value={pinLama} onChange={e => setPinLama(e.target.value)} className={`${fieldClass} mt-1`} />
+          </label>
+          <label className="text-xs text-zinc-400">
+            PIN baru
+            <input type="password" inputMode="numeric" autoComplete="new-password" maxLength={6} value={pinBaru} onChange={e => setPinBaru(e.target.value)} className={`${fieldClass} mt-1`} />
+          </label>
+          <label className="text-xs text-zinc-400">
+            Konfirmasi PIN baru
+            <input type="password" autoComplete="new-password" value={pinKonfirmasi} onChange={e => setPinKonfirmasi(e.target.value)} className={`${fieldClass} mt-1`} />
+          </label>
+        </div>
+        <div className="flex flex-col gap-3 border-t border-zinc-800 pt-4 sm:flex-row sm:items-center sm:justify-between">
+          <p aria-live="polite" className="text-sm text-red-400">{pinError}</p>
+          <button onClick={handleGantiPin} disabled={loading} className={saveButtonClass}>
+            {loading ? "Memproses..." : "Ganti PIN"}
           </button>
         </div>
-      </div>
+      </section>
     </div>
   )
 }

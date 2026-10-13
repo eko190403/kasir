@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react"
 import { loginWithUserAndPin, getActiveUsers } from "@/app/actions"
 import { useRouter } from "next/navigation"
-import { KeyRound, ChevronLeft, User } from "lucide-react"
+import { ChevronLeft, User } from "lucide-react"
 
 type StafItem = { id: string; nama: string; peran: string }
 
@@ -70,37 +70,34 @@ export default function LoginPage() {
   const handlePinDelete = () => setPin(p => p.slice(0, -1))
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-zinc-950 p-4">
-      <div className="w-full max-w-sm">
-        {/* Logo */}
-        <div className="flex flex-col items-center mb-8">
-          <div className="w-16 h-16 bg-amber-500/10 rounded-full flex items-center justify-center mb-4">
-            <KeyRound className="w-8 h-8 text-amber-400" />
-          </div>
-          <h1 className="text-2xl font-bold text-white">Superbar</h1>
-          <p className="text-zinc-500 text-sm mt-1">Point of Sale System</p>
+    <div className="flex min-h-screen items-center justify-center bg-zinc-950 p-4">
+      <div className="w-full max-w-md">
+        <div className="mb-6 border-b border-zinc-800 pb-4">
+          <p className="mb-1 text-xs font-medium text-amber-400">SISTEM KASIR</p>
+          <h1 className="text-2xl font-semibold text-white">Superbar</h1>
+          <p className="mt-1 text-sm text-zinc-500">Masuk menggunakan akun staf.</p>
         </div>
 
         {step === "select" ? (
-          <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6 shadow-xl">
-            <h2 className="font-bold text-lg mb-1 text-center">Siapa Anda?</h2>
-            <p className="text-zinc-500 text-sm mb-5 text-center">Pilih nama Anda untuk melanjutkan</p>
+          <div className="rounded-lg border border-zinc-800 bg-zinc-900 p-5">
+            <h2 className="mb-1 text-base font-semibold">Pilih akun staf</h2>
+            <p className="mb-4 text-sm text-zinc-500">Pilih nama Anda untuk melanjutkan.</p>
 
             {loadingUsers ? (
-              <div className="text-center py-8 text-zinc-500">Memuat daftar staf...</div>
+              <div className="py-8 text-center text-sm text-zinc-500">Memuat daftar staf...</div>
             ) : (
-              <div className="space-y-2">
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                 {users.map(user => (
                   <button
                     key={user.id}
                     onClick={() => handleSelectUser(user)}
-                    className="w-full flex items-center gap-3 p-3 rounded-xl bg-zinc-800 hover:bg-zinc-700 transition text-left group"
+                    className="group flex w-full items-center gap-3 rounded-md border border-zinc-800 bg-zinc-950/50 p-3 text-left transition-colors hover:border-zinc-600 hover:bg-zinc-800"
                   >
-                    <div className="w-9 h-9 rounded-full bg-zinc-700 group-hover:bg-zinc-600 flex items-center justify-center flex-shrink-0">
+                    <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-md bg-zinc-800">
                       <User className="w-4 h-4 text-zinc-400" />
                     </div>
-                    <div>
-                      <div className="font-semibold text-sm text-white">{user.nama}</div>
+                    <div className="min-w-0">
+                      <div className="truncate text-sm font-medium text-white">{user.nama}</div>
                       <div className={`text-xs font-medium ${PERAN_COLOR[user.peran] || 'text-zinc-400'}`}>{user.peran}</div>
                     </div>
                   </button>
@@ -112,10 +109,10 @@ export default function LoginPage() {
             )}
           </div>
         ) : (
-          <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6 shadow-xl">
+          <div className="rounded-lg border border-zinc-800 bg-zinc-900 p-5">
             {/* Back + user info */}
             <div className="flex items-center gap-3 mb-6">
-              <button onClick={() => { setStep("select"); setError("") }} className="p-1.5 rounded-lg hover:bg-zinc-800 transition">
+              <button onClick={() => { setStep("select"); setError("") }} className="rounded-md p-1.5 transition-colors hover:bg-zinc-800">
                 <ChevronLeft className="w-5 h-5 text-zinc-400" />
               </button>
               <div className="flex items-center gap-2 flex-1">
@@ -148,7 +145,7 @@ export default function LoginPage() {
 
               {/* Virtual numpad */}
               <div className="grid grid-cols-3 gap-2 mb-3">
-                {["1","2","3","4","5","6","7","8","9","","0","⌫"].map((d, i) => (
+                {["1","2","3","4","5","6","7","8","9","","0","⌫"].map(d => (
                   d === "" ? <div key="empty" /> :
                   d === "⌫" ? (
                     <button key="del" type="button" onClick={handlePinDelete}

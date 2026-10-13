@@ -105,6 +105,7 @@ model Bill {
   shift     Shift?     @relation(fields: [shiftId], references: [id])
   billItems BillItem[]
   payments  Payment[]
+  refunds   Refund[]
   reservasi Reservasi?
 
   @@unique([businessDate, nomorBill])
@@ -204,6 +205,7 @@ model Shift {
 
   kasir User   @relation(fields: [kasirId], references: [id])
   bills Bill[]
+  refunds Refund[]
 
   @@index([kasirId, waktuTutup])
 }
@@ -229,10 +231,30 @@ model User {
 
   bills     Bill[]     @relation("KasirBill")
   shifts    Shift[]
+  refunds   Refund[]   @relation("RefundOperator")
   auditLogs AuditLog[]
 
   @@index([peran, isDeleted])
   @@index([lockedUntil])
+}
+
+model Refund {
+  id          String      @id @default(uuid())
+  billId      String      @unique
+  shiftId     String?
+  operatorId  String
+  metode      MetodeBayar
+  jumlah      Int
+  alasan      String
+  referensi   String?
+  createdAt   DateTime    @default(now())
+
+  bill     Bill  @relation(fields: [billId], references: [id], onDelete: Restrict)
+  shift    Shift? @relation(fields: [shiftId], references: [id], onDelete: Restrict)
+  operator User  @relation("RefundOperator", fields: [operatorId], references: [id], onDelete: Restrict)
+
+  @@index([shiftId, createdAt])
+  @@index([createdAt])
 }
 
 model AuditLog {

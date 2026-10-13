@@ -4,30 +4,55 @@ import { useMemo, useState } from "react"
 import { createReservasi, updateReservasiStatus } from "@/app/actions"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
+import type { Prisma, ReservasiStatus, Sofa } from "@prisma/client"
 
-export default function ReservasiClient({ reservasis, sofas }: { reservasis: any[], sofas: any[] }) {
+type ReservasiWithSofa = Prisma.ReservasiGetPayload<{ include: { sofa: true } }>
+type ReservationFilter = "ALL" | ReservasiStatus
+
+const statusLabel: Record<ReservasiStatus, string> = {
+  PENDING: "Menunggu",
+  CONFIRMED: "Dikonfirmasi",
+  CANCELLED: "Dibatalkan",
+  COMPLETED: "Selesai",
+}
+
+const statusClass: Record<ReservasiStatus, string> = {
+  PENDING: "border-amber-800 bg-amber-950/30 text-amber-300",
+  CONFIRMED: "border-blue-800 bg-blue-950/30 text-blue-300",
+  CANCELLED: "border-red-900 bg-red-950/30 text-red-300",
+  COMPLETED: "border-emerald-900 bg-emerald-950/30 text-emerald-300",
+}
+
+const fieldClass = "mt-1 h-10 w-full rounded-md border border-zinc-700 bg-zinc-950 px-3 text-sm text-white placeholder:text-zinc-600 focus:border-amber-500 focus:outline-none"
+
+export default function ReservasiClient({ reservasis, sofas }: { reservasis: ReservasiWithSofa[], sofas: Sofa[] }) {
   const router = useRouter()
   const [showForm, setShowForm] = useState(false)
   const [loading, setLoading] = useState(false)
-  const [filter, setFilter] = useState<'ALL' | 'PENDING' | 'CONFIRMED' | 'COMPLETED' | 'CANCELLED'>('ALL')
+  const [filter, setFilter] = useState<ReservationFilter>("ALL")
   const [search, setSearch] = useState('')
   const [form, setForm] = useState({ sofaId: '', nama: '', noHp: '', jam: '', jumlahOrang: 2, deposit: 0, depositMetode: 'TUNAI' as 'TUNAI' | 'KARTU' | 'QRIS' })
 
   const filteredReservasis = useMemo(() => {
     return reservasis.filter((item) => {
       const matchesStatus = filter === 'ALL' || item.status === filter
-      const matchesSearch = item.nama.toLowerCase().includes(search.toLowerCase()) ||
-        item.sofa?.nama?.toLowerCase().includes(search.toLowerCase()) ||
-        item.noHp?.includes(search)
+      const normalizedSearch = search.trim().toLowerCase()
+      const matchesSearch = item.nama.toLowerCase().includes(normalizedSearch) ||
+        item.sofa.nama.toLowerCase().includes(normalizedSearch) ||
+        (item.noHp ?? "").includes(normalizedSearch)
       return matchesStatus && matchesSearch
     })
   }, [reservasis, filter, search])
 
-  const stats = {
-    pending: reservasis.filter(r => r.status === 'PENDING').length,
-    confirmed: reservasis.filter(r => r.status === 'CONFIRMED').length,
-    completed: reservasis.filter(r => r.status === 'COMPLETED').length,
-  }
+  const stats = [
+    { label: "Menunggu", status: "PENDING" as const },
+    { label: "Dikonfirmasi", status: "CONFIRMED" as const },
+    { label: "Selesai", status: "COMPLETED" as const },
+    { label: "Dibatalkan", status: "CANCELLED" as const },
+  ].map(item => ({
+    ...item,
+    count: reservasis.filter(reservasi => reservasi.status === item.status).length,
+  }))
 
   const handleSubmit = async () => {
     if (!form.sofaId || !form.nama || !form.jam) {
@@ -40,8 +65,8 @@ export default function ReservasiClient({ reservasis, sofas }: { reservasis: any
       setShowForm(false)
       setForm({ sofaId: '', nama: '', noHp: '', jam: '', jumlahOrang: 2, deposit: 0, depositMetode: 'TUNAI' })
       router.refresh()
-    } catch (err: any) {
-      toast.error(err.message)
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : "Gagal menyimpan reservasi.")
     } finally {
       setLoading(false)
     }
@@ -52,160 +77,159 @@ export default function ReservasiClient({ reservasis, sofas }: { reservasis: any
     try {
       await updateReservasiStatus(id, status)
       router.refresh()
-    } catch (err: any) {
-      toast.error(err.message)
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : "Gagal memperbarui status reservasi.")
     } finally {
       setLoading(false)
     }
   }
 
   return (
-    <div className="space-y-6">
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div className="bg-zinc-900 border border-amber-700/40 p-4 rounded-xl">
-          <p className="text-xs uppercase text-zinc-400">Pending</p>
-          <p className="text-2xl font-bold text-amber-400">{stats.pending}</p>
-        </div>
-        <div className="bg-zinc-900 border border-blue-700/40 p-4 rounded-xl">
-          <p className="text-xs uppercase text-zinc-400">Confirmed</p>
-          <p className="text-2xl font-bold text-blue-400">{stats.confirmed}</p>
-        </div>
-        <div className="bg-zinc-900 border border-emerald-700/40 p-4 rounded-xl">
-          <p className="text-xs uppercase text-zinc-400">Completed</p>
-          <p className="text-2xl font-bold text-emerald-400">{stats.completed}</p>
-        </div>
-      </div>
-
-      {!showForm ? (
-        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-          <button onClick={() => setShowForm(true)} className="px-4 py-2 bg-amber-600 hover:bg-amber-500 rounded-lg text-sm font-medium transition w-fit">
-            + Tambah Reservasi
-          </button>
-
-          <div className="flex flex-col gap-2 md:flex-row md:items-center">
-            <input
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Cari nama atau sofa..."
-              className="bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-white placeholder:text-zinc-500 focus:outline-none focus:border-emerald-500"
-            />
-            <select
-              value={filter}
-              onChange={(e) => setFilter(e.target.value as any)}
-              className="bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-emerald-500"
-            >
-              <option value="ALL">Semua Status</option>
-              <option value="PENDING">Pending</option>
-              <option value="CONFIRMED">Confirmed</option>
-              <option value="COMPLETED">Completed</option>
-              <option value="CANCELLED">Cancelled</option>
-            </select>
+    <div className="space-y-5">
+      <section className="grid grid-cols-2 gap-px overflow-hidden rounded-lg border border-zinc-800 bg-zinc-800 sm:grid-cols-4">
+        {stats.map(stat => (
+          <div key={stat.status} className="bg-zinc-900 px-4 py-3">
+            <p className="text-xs text-zinc-500">{stat.label}</p>
+            <p className="mt-1 text-xl font-semibold tabular-nums text-zinc-100">{stat.count}</p>
           </div>
-        </div>
-      ) : (
-        <div className="bg-zinc-900 border border-zinc-800 p-5 rounded-xl space-y-4 max-w-lg">
-          <h2 className="font-bold text-lg">Buat Reservasi Baru</h2>
-          <div className="space-y-3">
-            <div>
-              <label className="text-xs text-zinc-400">Nama Tamu</label>
-              <input type="text" value={form.nama} onChange={e => setForm({...form, nama: e.target.value})}
-                className="w-full bg-zinc-800 border border-zinc-700 rounded-lg p-2 text-sm mt-1 focus:outline-none focus:border-emerald-500" />
-            </div>
-            <div>
-              <label className="text-xs text-zinc-400">Nomor Telepon (Opsional)</label>
-              <input type="tel" value={form.noHp} onChange={e => setForm({...form, noHp: e.target.value})}
-                className="w-full bg-zinc-800 border border-zinc-700 rounded-lg p-2 text-sm mt-1 focus:outline-none focus:border-emerald-500" />
-            </div>
-            <div>
-              <label className="text-xs text-zinc-400">Sofa</label>
-              <select value={form.sofaId} onChange={e => setForm({...form, sofaId: e.target.value})}
-                className="w-full bg-zinc-800 border border-zinc-700 rounded-lg p-2 text-sm mt-1 focus:outline-none focus:border-emerald-500">
-                <option value="">Pilih Sofa</option>
-                {sofas.map(s => <option key={s.id} value={s.id}>{s.nama} ({s.kapasitas} org)</option>)}
+        ))}
+      </section>
+
+      <section className="rounded-lg border border-zinc-800 bg-zinc-900 p-4 sm:p-5">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+          <div className="flex flex-col gap-2 sm:flex-row">
+            <label className="text-xs text-zinc-400">
+              Cari reservasi
+              <input
+                value={search}
+                onChange={event => setSearch(event.target.value)}
+                placeholder="Nama, nomor telepon, atau sofa"
+                className={`${fieldClass} sm:w-72`}
+              />
+            </label>
+            <label className="text-xs text-zinc-400">
+              Status
+              <select
+                value={filter}
+                onChange={event => setFilter(event.target.value as ReservationFilter)}
+                className={`${fieldClass} sm:w-48`}
+              >
+                <option value="ALL">Semua status</option>
+                {Object.entries(statusLabel).map(([value, label]) => (
+                  <option key={value} value={value}>{label}</option>
+                ))}
               </select>
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="text-xs text-zinc-400">Waktu</label>
-                <input type="datetime-local" value={form.jam} onChange={e => setForm({...form, jam: e.target.value})}
-                  className="w-full bg-zinc-800 border border-zinc-700 rounded-lg p-2 text-sm mt-1 focus:outline-none focus:border-emerald-500" />
-              </div>
-              <div>
-                <label className="text-xs text-zinc-400">Jumlah Orang</label>
-                <input type="number" min="1" value={form.jumlahOrang} onChange={e => setForm({...form, jumlahOrang: parseInt(e.target.value) || 1})}
-                  className="w-full bg-zinc-800 border border-zinc-700 rounded-lg p-2 text-sm mt-1 focus:outline-none focus:border-emerald-500" />
-              </div>
-            </div>
-            <div>
-              <label className="text-xs text-zinc-400">Deposit (Opsional)</label>
-              <input type="number" min="0" value={form.deposit} onChange={e => setForm({...form, deposit: parseInt(e.target.value) || 0})}
-                className="w-full bg-zinc-800 border border-zinc-700 rounded-lg p-2 text-sm mt-1 focus:outline-none focus:border-emerald-500" />
-            </div>
+            </label>
+          </div>
+          <button
+            onClick={() => setShowForm(current => !current)}
+            className="h-10 rounded-md bg-amber-600 px-4 text-sm font-medium text-white transition-colors hover:bg-amber-500"
+          >
+            {showForm ? "Tutup formulir" : "Tambah reservasi"}
+          </button>
+        </div>
+      </section>
+
+      {showForm && (
+        <section className="rounded-lg border border-zinc-800 bg-zinc-900 p-4 sm:p-5">
+          <div className="mb-4 border-b border-zinc-800 pb-3">
+            <h2 className="text-base font-semibold text-zinc-100">Reservasi baru</h2>
+            <p className="mt-1 text-sm text-zinc-500">Isi detail tamu, waktu, dan area yang dipesan.</p>
+          </div>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            <label className="text-xs text-zinc-400">
+              Nama tamu
+              <input required type="text" value={form.nama} onChange={event => setForm({ ...form, nama: event.target.value })} className={fieldClass} />
+            </label>
+            <label className="text-xs text-zinc-400">
+              Nomor telepon <span className="text-zinc-600">(opsional)</span>
+              <input type="tel" value={form.noHp} onChange={event => setForm({ ...form, noHp: event.target.value })} className={fieldClass} />
+            </label>
+            <label className="text-xs text-zinc-400">
+              Sofa / area
+              <select required value={form.sofaId} onChange={event => setForm({ ...form, sofaId: event.target.value })} className={fieldClass}>
+                <option value="">Pilih area</option>
+                {sofas.map(sofa => <option key={sofa.id} value={sofa.id}>{sofa.nama} · {sofa.kapasitas} orang</option>)}
+              </select>
+            </label>
+            <label className="text-xs text-zinc-400">
+              Tanggal dan waktu
+              <input required type="datetime-local" value={form.jam} onChange={event => setForm({ ...form, jam: event.target.value })} className={fieldClass} />
+            </label>
+            <label className="text-xs text-zinc-400">
+              Jumlah orang
+              <input type="number" min="1" value={form.jumlahOrang} onChange={event => setForm({ ...form, jumlahOrang: parseInt(event.target.value) || 1 })} className={fieldClass} />
+            </label>
+            <label className="text-xs text-zinc-400">
+              Deposit <span className="text-zinc-600">(opsional)</span>
+              <input type="number" min="0" value={form.deposit} onChange={event => setForm({ ...form, deposit: parseInt(event.target.value) || 0 })} className={fieldClass} />
+            </label>
             {form.deposit > 0 && (
-              <div>
-                <label className="text-xs text-zinc-400">Metode Pembayaran Deposit</label>
-                <select value={form.depositMetode} onChange={e => setForm({...form, depositMetode: e.target.value as 'TUNAI' | 'KARTU' | 'QRIS'})}
-                  className="w-full bg-zinc-800 border border-zinc-700 rounded-lg p-2 text-sm mt-1 focus:outline-none focus:border-emerald-500">
+              <label className="text-xs text-zinc-400">
+                Metode pembayaran deposit
+                <select value={form.depositMetode} onChange={event => setForm({ ...form, depositMetode: event.target.value as typeof form.depositMetode })} className={fieldClass}>
                   <option value="TUNAI">Tunai</option>
                   <option value="KARTU">Kartu</option>
                   <option value="QRIS">QRIS</option>
                 </select>
-              </div>
+              </label>
             )}
           </div>
-          <div className="flex gap-2 pt-2">
-            <button onClick={() => setShowForm(false)} className="px-4 py-2 bg-zinc-700 rounded-lg text-sm">Batal</button>
-            <button onClick={handleSubmit} disabled={loading} className="flex-1 bg-amber-600 hover:bg-amber-500 py-2 rounded-lg text-sm font-bold">Simpan</button>
+          <div className="mt-5 flex justify-end gap-2 border-t border-zinc-800 pt-4">
+            <button onClick={() => setShowForm(false)} className="h-10 rounded-md border border-zinc-700 px-4 text-sm font-medium text-zinc-300 transition-colors hover:bg-zinc-800">Batal</button>
+            <button onClick={handleSubmit} disabled={loading} className="h-10 rounded-md bg-amber-600 px-4 text-sm font-medium text-white transition-colors hover:bg-amber-500 disabled:opacity-50">{loading ? "Menyimpan..." : "Simpan reservasi"}</button>
           </div>
-        </div>
+        </section>
       )}
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+      <div className="flex items-center justify-between">
+        <h2 className="text-base font-semibold text-zinc-100">Daftar reservasi</h2>
+        <span className="text-xs tabular-nums text-zinc-500">{filteredReservasis.length} dari {reservasis.length}</span>
+      </div>
+      <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
         {filteredReservasis.length === 0 ? (
-          <div className="text-zinc-500 italic col-span-full bg-zinc-900 border border-dashed border-zinc-700 rounded-xl p-6 text-center">
-            Belum ada reservasi yang sesuai filter.
+          <div className="col-span-full rounded-lg border border-dashed border-zinc-800 px-5 py-10 text-center">
+            <p className="text-sm font-medium text-zinc-300">Tidak ada reservasi ditemukan.</p>
+            <p className="mt-1 text-sm text-zinc-500">Ubah pencarian atau filter status untuk melihat hasil lain.</p>
           </div>
         ) : (
           filteredReservasis.map(r => {
-            const statusColor: Record<string, string> = {
-              PENDING: 'bg-amber-600',
-              CONFIRMED: 'bg-blue-600',
-              CANCELLED: 'bg-red-600',
-              COMPLETED: 'bg-emerald-600',
-            }
             return (
-              <div key={r.id} className="bg-zinc-900 border border-zinc-800 p-5 rounded-xl space-y-3">
-                <div className="flex justify-between items-start">
-                  <div>
-                    <h3 className="font-bold text-lg">{r.nama}</h3>
-                    <p className="text-sm text-zinc-400">{r.sofa?.nama} • {r.jumlahOrang} orang</p>
+              <article key={r.id} className="flex flex-col rounded-lg border border-zinc-800 bg-zinc-900 p-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <h3 className="truncate text-base font-semibold text-zinc-100">{r.nama}</h3>
+                    <p className="mt-1 text-sm text-zinc-400">{r.sofa.nama} <span className="text-zinc-600">·</span> {r.jumlahOrang} orang</p>
                   </div>
-                  <span className={`px-2 py-1 text-xs font-bold rounded-md ${statusColor[r.status] || 'bg-zinc-700'}`}>
-                    {r.status}
+                  <span className={`shrink-0 rounded border px-2 py-1 text-xs font-medium ${statusClass[r.status]}`}>
+                    {statusLabel[r.status]}
                   </span>
                 </div>
-                <p className="text-sm text-zinc-300">
-                  {new Date(r.jam).toLocaleDateString('id-ID', { weekday: 'short', day: 'numeric', month: 'short' })} • {new Date(r.jam).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}
+                <p className="mt-4 border-t border-zinc-800 pt-3 text-sm tabular-nums text-zinc-300">
+                  {new Date(r.jam).toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
+                  <span className="mx-2 text-zinc-600">·</span>
+                  {new Date(r.jam).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}
                 </p>
-                {r.noHp && <p className="text-xs text-zinc-400">Telp: {r.noHp}</p>}
+                {r.noHp && <p className="mt-2 text-xs text-zinc-500">Telepon: {r.noHp}</p>}
                 {r.deposit && r.deposit > 0 && (
-                  <p className="text-xs text-emerald-400">
-                    Deposit: Rp {r.deposit.toLocaleString('id-ID')} ({r.depositMetode || 'metode lama'})
-                    {r.billId ? ' · sudah diterapkan ke bill' : ''}
+                  <p className="mt-2 text-sm text-zinc-300">
+                    Deposit <span className="font-medium tabular-nums text-zinc-100">Rp {r.deposit.toLocaleString('id-ID')}</span>
+                    <span className="text-zinc-500"> · {r.depositMetode || 'metode lama'}</span>
+                    {r.billId ? <span className="text-emerald-300"> · diterapkan ke bill</span> : null}
                   </p>
                 )}
                 {r.status === 'PENDING' && (
-                  <div className="flex gap-2 pt-2 border-t border-zinc-800">
-                    <button onClick={() => handleStatus(r.id, 'CONFIRMED')} disabled={loading} className="flex-1 bg-blue-600 hover:bg-blue-500 py-1 rounded text-xs font-bold">Konfirmasi</button>
-                    <button onClick={() => handleStatus(r.id, 'CANCELLED')} disabled={loading} className="flex-1 bg-red-600 hover:bg-red-500 py-1 rounded text-xs font-bold">Batal</button>
+                  <div className="mt-auto flex gap-2 border-t border-zinc-800 pt-3">
+                    <button onClick={() => handleStatus(r.id, 'CONFIRMED')} disabled={loading} className="h-9 flex-1 rounded-md bg-amber-600 px-3 text-sm font-medium text-white transition-colors hover:bg-amber-500 disabled:opacity-50">Konfirmasi</button>
+                    <button onClick={() => handleStatus(r.id, 'CANCELLED')} disabled={loading} className="h-9 rounded-md border border-zinc-700 px-3 text-sm font-medium text-zinc-300 transition-colors hover:border-red-900 hover:bg-red-950/40 hover:text-red-300 disabled:opacity-50">Batalkan</button>
                   </div>
                 )}
                 {r.status === 'CONFIRMED' && (
-                  <div className="pt-2 border-t border-zinc-800">
-                    <button onClick={() => handleStatus(r.id, 'COMPLETED')} disabled={loading} className="w-full bg-emerald-600 hover:bg-emerald-500 py-1 rounded text-xs font-bold">Selesai</button>
+                  <div className="mt-auto border-t border-zinc-800 pt-3">
+                    <button onClick={() => handleStatus(r.id, 'COMPLETED')} disabled={loading} className="h-9 w-full rounded-md border border-zinc-700 px-3 text-sm font-medium text-zinc-200 transition-colors hover:border-emerald-900 hover:bg-emerald-950/40 hover:text-emerald-300 disabled:opacity-50">Tandai selesai</button>
                   </div>
                 )}
-              </div>
+              </article>
             )
           })
         )}

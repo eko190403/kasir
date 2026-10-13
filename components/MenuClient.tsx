@@ -3,17 +3,23 @@
 import { toggleMenuAvailability, addMenuItem, editMenuItem, deleteMenuItem } from "@/app/actions"
 import { useRouter } from "next/navigation"
 import { useMemo, useState } from "react"
-import { Utensils, Coffee, Edit, Trash2, Plus, Search, Filter, X } from "lucide-react"
+import { Utensils, Coffee, Edit, Trash2, Plus, Search, X } from "lucide-react"
 import { toast } from "sonner"
+import type { MenuItem, MenuKategori } from "@prisma/client"
 
-export default function MenuClient({ menuItems }: { menuItems: any[] }) {
+type CategoryFilter = "SEMUA" | MenuKategori
+type AvailabilityFilter = "SEMUA" | "TERSEDIA" | "HABIS"
+
+const fieldClass = "h-10 rounded-md border border-zinc-700 bg-zinc-950 px-3 text-sm text-white focus:border-amber-500 focus:outline-none"
+
+export default function MenuClient({ menuItems }: { menuItems: MenuItem[] }) {
   const router = useRouter()
   const [loading, setLoading] = useState<string | null>(null)
   const [showAddForm, setShowAddForm] = useState(false)
   const [editId, setEditId] = useState<string | null>(null)
   const [search, setSearch] = useState("")
-  const [categoryFilter, setCategoryFilter] = useState<"SEMUA" | "MAKANAN" | "MINUMAN">("SEMUA")
-  const [statusFilter, setStatusFilter] = useState<"SEMUA" | "TERSEDIA" | "HABIS">("SEMUA")
+  const [categoryFilter, setCategoryFilter] = useState<CategoryFilter>("SEMUA")
+  const [statusFilter, setStatusFilter] = useState<AvailabilityFilter>("SEMUA")
 
   // Form State
   const [nama, setNama] = useState("")
@@ -38,8 +44,8 @@ export default function MenuClient({ menuItems }: { menuItems: any[] }) {
     try {
       await toggleMenuAvailability(id)
       router.refresh()
-    } catch (err: any) {
-      toast.error(err.message)
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : "Gagal mengubah ketersediaan menu.")
     } finally {
       setLoading(null)
     }
@@ -58,8 +64,8 @@ export default function MenuClient({ menuItems }: { menuItems: any[] }) {
       }
       resetForm()
       router.refresh()
-    } catch (err: any) {
-      toast.error(err.message)
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : "Gagal menyimpan menu.")
     } finally {
       setLoading(null)
     }
@@ -72,8 +78,8 @@ export default function MenuClient({ menuItems }: { menuItems: any[] }) {
       await deleteMenuItem(id)
       toast.success('Menu berhasil dihapus.')
       router.refresh()
-    } catch (err: any) {
-      toast.error(err.message)
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : "Gagal menghapus menu.")
     } finally {
       setLoading(null)
     }
@@ -87,7 +93,7 @@ export default function MenuClient({ menuItems }: { menuItems: any[] }) {
     setKategori("MINUMAN")
   }
 
-  const startEdit = (item: any) => {
+  const startEdit = (item: MenuItem) => {
     setEditId(item.id)
     setNama(item.nama)
     setHarga(item.harga.toString())
@@ -102,126 +108,133 @@ export default function MenuClient({ menuItems }: { menuItems: any[] }) {
   }
 
   return (
-    <div className="space-y-6">
-      {!showAddForm ? (
-        <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
-          <button
-            onClick={() => setShowAddForm(true)}
-            className="px-4 py-2 bg-amber-600 hover:bg-amber-500 rounded-lg font-bold text-sm flex items-center gap-2 w-fit"
-          >
-            <Plus className="w-4 h-4" /> Tambah Menu Baru
-          </button>
-
-          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-end">
-            <div className="relative w-full md:w-72">
-              <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400" />
+    <div className="space-y-4">
+      <section className="rounded-lg border border-zinc-800 bg-zinc-900 p-4 sm:p-5">
+        <div className="flex flex-col gap-3 xl:flex-row xl:items-end xl:justify-between">
+          <div className="flex flex-col gap-2 sm:flex-row">
+            <label className="relative text-xs text-zinc-400">
+              Cari menu
+              <Search className="absolute left-3 top-[2.15rem] h-4 w-4 text-zinc-500" />
               <input
                 value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder="Cari nama menu..."
-                className="w-full bg-zinc-900 border border-zinc-700 rounded-lg pl-9 pr-3 py-2 text-sm text-white placeholder:text-zinc-500 focus:outline-none focus:border-emerald-500"
+                onChange={event => setSearch(event.target.value)}
+                placeholder="Nama menu"
+                className={`${fieldClass} mt-1 w-full pl-9 sm:w-64`}
               />
-            </div>
-
-            <div className="flex items-center gap-2">
-              <div className="relative">
-                <Filter className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400" />
-                <select
-                  value={categoryFilter}
-                  onChange={(e) => setCategoryFilter(e.target.value as "SEMUA" | "MAKANAN" | "MINUMAN")}
-                  className="bg-zinc-900 border border-zinc-700 rounded-lg pl-9 pr-3 py-2 text-sm text-white focus:outline-none focus:border-emerald-500"
-                >
-                  <option value="SEMUA">Semua Kategori</option>
-                  <option value="MAKANAN">Makanan</option>
-                  <option value="MINUMAN">Minuman</option>
-                </select>
-              </div>
-
+            </label>
+            <label className="text-xs text-zinc-400">
+              Kategori
+              <select
+                value={categoryFilter}
+                onChange={event => setCategoryFilter(event.target.value as CategoryFilter)}
+                className={`${fieldClass} mt-1 w-full sm:w-40`}
+              >
+                <option value="SEMUA">Semua kategori</option>
+                <option value="MAKANAN">Makanan</option>
+                <option value="MINUMAN">Minuman</option>
+              </select>
+            </label>
+            <label className="text-xs text-zinc-400">
+              Ketersediaan
               <select
                 value={statusFilter}
-                onChange={(e) => setStatusFilter(e.target.value as "SEMUA" | "TERSEDIA" | "HABIS")}
-                className="bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-emerald-500"
+                onChange={event => setStatusFilter(event.target.value as AvailabilityFilter)}
+                className={`${fieldClass} mt-1 w-full sm:w-40`}
               >
-                <option value="SEMUA">Semua Status</option>
+                <option value="SEMUA">Semua status</option>
                 <option value="TERSEDIA">Tersedia</option>
                 <option value="HABIS">Habis</option>
               </select>
-
-              {(search || categoryFilter !== "SEMUA" || statusFilter !== "SEMUA") && (
-                <button
-                  type="button"
-                  onClick={clearFilters}
-                  className="flex items-center gap-1 px-2 py-2 text-xs text-zinc-300 hover:text-white"
-                >
-                  <X className="w-3 h-3" /> Reset
-                </button>
-              )}
-            </div>
+            </label>
+            {(search || categoryFilter !== "SEMUA" || statusFilter !== "SEMUA") && (
+              <button type="button" onClick={clearFilters} className="inline-flex h-10 items-center gap-1 self-end px-2 text-sm text-zinc-400 transition-colors hover:text-white">
+                <X className="h-3.5 w-3.5" /> Reset
+              </button>
+            )}
           </div>
+          <button
+            onClick={() => setShowAddForm(true)}
+            className="inline-flex h-10 items-center justify-center gap-2 rounded-md bg-amber-600 px-4 text-sm font-medium text-white transition-colors hover:bg-amber-500"
+          >
+            <Plus className="h-4 w-4" /> Tambah menu
+          </button>
         </div>
-      ) : (
-        <form onSubmit={handleSubmit} className="bg-zinc-900 border border-zinc-800 p-5 rounded-xl space-y-4 max-w-md">
-          <h2 className="font-bold text-lg">{editId ? 'Edit Menu' : 'Tambah Menu Baru'}</h2>
-          <div>
-            <label className="text-xs text-zinc-400 block mb-1">Nama Menu</label>
-            <input required type="text" value={nama} onChange={e => setNama(e.target.value)} className="w-full bg-zinc-800 border border-zinc-700 rounded-lg p-2 text-sm focus:outline-none focus:border-emerald-500" />
+      </section>
+
+      {showAddForm && (
+        <form onSubmit={handleSubmit} className="rounded-lg border border-zinc-800 bg-zinc-900 p-4 sm:p-5">
+          <div className="mb-4 border-b border-zinc-800 pb-3">
+            <h2 className="text-base font-semibold text-zinc-100">{editId ? "Ubah menu" : "Menu baru"}</h2>
+            <p className="mt-1 text-sm text-zinc-500">Lengkapi nama, harga, dan kategori.</p>
           </div>
-          <div>
-            <label className="text-xs text-zinc-400 block mb-1">Harga (Rp)</label>
-            <input required type="number" min="0" value={harga} onChange={e => setHarga(e.target.value)} className="w-full bg-zinc-800 border border-zinc-700 rounded-lg p-2 text-sm focus:outline-none focus:border-emerald-500" />
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            <label className="text-xs text-zinc-400">
+              Nama menu
+              <input required type="text" value={nama} onChange={event => setNama(event.target.value)} className={`${fieldClass} mt-1 w-full`} />
+            </label>
+            <label className="text-xs text-zinc-400">
+              Harga (Rp)
+              <input required type="number" min="0" value={harga} onChange={event => setHarga(event.target.value)} className={`${fieldClass} mt-1 w-full`} />
+            </label>
+            <label className="text-xs text-zinc-400">
+              Kategori
+              <select value={kategori} onChange={event => setKategori(event.target.value as MenuKategori)} className={`${fieldClass} mt-1 w-full`}>
+                <option value="MINUMAN">Minuman</option>
+                <option value="MAKANAN">Makanan</option>
+              </select>
+            </label>
           </div>
-          <div>
-            <label className="text-xs text-zinc-400 block mb-1">Kategori</label>
-            <select value={kategori} onChange={e => setKategori(e.target.value as any)} className="w-full bg-zinc-800 border border-zinc-700 rounded-lg p-2 text-sm focus:outline-none focus:border-emerald-500">
-              <option value="MINUMAN">MINUMAN</option>
-              <option value="MAKANAN">MAKANAN</option>
-            </select>
-          </div>
-          <div className="flex gap-2 pt-2">
-            <button type="button" onClick={resetForm} className="px-4 py-2 bg-zinc-700 rounded-lg text-sm">Batal</button>
-            <button type="submit" disabled={loading === "submit"} className="flex-1 bg-amber-600 hover:bg-amber-500 font-bold rounded-lg text-sm">Simpan</button>
+          <div className="mt-5 flex justify-end gap-2 border-t border-zinc-800 pt-4">
+            <button type="button" onClick={resetForm} className="h-10 rounded-md border border-zinc-700 px-4 text-sm font-medium text-zinc-300 transition-colors hover:bg-zinc-800">Batal</button>
+            <button type="submit" disabled={loading === "submit"} className="h-10 rounded-md bg-amber-600 px-4 text-sm font-medium text-white transition-colors hover:bg-amber-500 disabled:opacity-50">{loading === "submit" ? "Menyimpan..." : "Simpan menu"}</button>
           </div>
         </form>
       )}
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+      <div className="flex items-center justify-between">
+        <h2 className="text-base font-semibold text-zinc-100">Daftar menu</h2>
+        <span className="text-xs tabular-nums text-zinc-500">{filteredMenuItems.length} dari {menuItems.length}</span>
+      </div>
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
         {filteredMenuItems.length === 0 ? (
-          <div className="md:col-span-2 lg:col-span-3 bg-zinc-900 border border-dashed border-zinc-700 rounded-xl p-6 text-center text-zinc-400">
-            Tidak ada menu yang sesuai dengan pencarian atau filter saat ini.
+          <div className="col-span-full rounded-lg border border-dashed border-zinc-800 px-5 py-10 text-center">
+            <p className="text-sm font-medium text-zinc-300">Tidak ada menu ditemukan.</p>
+            <p className="mt-1 text-sm text-zinc-500">Ubah pencarian atau filter untuk melihat menu lain.</p>
           </div>
         ) : (
           filteredMenuItems.map(item => (
-            <div key={item.id} className="bg-zinc-900 border border-zinc-800 p-5 rounded-xl flex flex-col justify-between">
-              <div className="flex justify-between items-start mb-4">
-                <div>
-                  <h3 className="font-bold text-lg">{item.nama}</h3>
-                  <p className="text-emerald-400 font-medium text-sm">Rp {item.harga.toLocaleString('id-ID')}</p>
-                  <span className={`text-xs px-2 py-1 rounded-full mt-2 inline-flex items-center gap-1 font-semibold ${item.kategori === 'MAKANAN' ? 'bg-amber-900/50 text-amber-400' : 'bg-blue-900/50 text-blue-400'}`}>
-                    {item.kategori === 'MAKANAN' ? <Utensils className="w-3 h-3" /> : <Coffee className="w-3 h-3" />}
-                    {item.kategori}
-                  </span>
+            <article key={item.id} className="flex min-h-44 flex-col rounded-lg border border-zinc-800 bg-zinc-900 p-4">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <h3 className="break-words text-base font-semibold text-zinc-100">{item.nama}</h3>
+                  <p className="mt-2 text-lg font-medium tabular-nums text-zinc-100">Rp {item.harga.toLocaleString('id-ID')}</p>
                 </div>
                 <button
                   onClick={() => handleToggle(item.id)}
                   disabled={loading === item.id}
-                  className={`px-3 py-1 rounded text-xs font-bold transition ${item.tersedia
-                    ? 'bg-emerald-600 hover:bg-emerald-500 text-white'
-                    : 'bg-red-600 hover:bg-red-500 text-white'
+                  className={`shrink-0 rounded-md border px-2.5 py-1.5 text-xs font-medium transition-colors disabled:opacity-50 ${item.tersedia
+                    ? 'border-emerald-900 bg-emerald-950/30 text-emerald-300 hover:bg-emerald-950/60'
+                    : 'border-zinc-700 bg-zinc-800 text-zinc-400 hover:text-zinc-200'
                   }`}
                 >
-                  {item.tersedia ? 'Tersedia' : 'Habis'}
+                  {loading === item.id ? "Memperbarui..." : item.tersedia ? 'Tersedia' : 'Habis'}
                 </button>
               </div>
-
-              <div className="flex gap-2 border-t border-zinc-800 pt-3 mt-4">
-                <button onClick={() => startEdit(item)} className="text-xs text-blue-400 hover:text-blue-300 flex-1 flex items-center gap-1">
-                  <Edit className="w-3 h-3" /> Edit
-                </button>
-                <button onClick={() => handleDelete(item.id)} disabled={loading === item.id} className="text-xs text-red-400 hover:text-red-300 flex items-center gap-1">
-                  <Trash2 className="w-3 h-3" /> Hapus
-                </button>
+              <div className="mt-auto flex items-center justify-between border-t border-zinc-800 pt-3">
+                <span className="inline-flex items-center gap-1.5 text-xs text-zinc-500">
+                  {item.kategori === 'MAKANAN' ? <Utensils className="h-3.5 w-3.5" /> : <Coffee className="h-3.5 w-3.5" />}
+                  {item.kategori === 'MAKANAN' ? "Makanan" : "Minuman"}
+                </span>
+                <div className="flex gap-1">
+                  <button onClick={() => startEdit(item)} className="inline-flex h-8 items-center gap-1.5 rounded-md px-2 text-xs font-medium text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-zinc-100">
+                    <Edit className="h-3.5 w-3.5" /> Ubah
+                  </button>
+                  <button onClick={() => handleDelete(item.id)} disabled={loading === item.id} className="inline-flex h-8 items-center gap-1.5 rounded-md px-2 text-xs font-medium text-zinc-500 transition-colors hover:bg-red-950/40 hover:text-red-300 disabled:opacity-50">
+                    <Trash2 className="h-3.5 w-3.5" /> Hapus
+                  </button>
+                </div>
               </div>
-            </div>
+            </article>
           ))
         )}
       </div>

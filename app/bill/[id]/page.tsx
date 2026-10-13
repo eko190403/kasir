@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma"
 import BillClient from "@/components/BillClient"
+import { getSession } from "@/lib/auth"
 import Link from "next/link"
 import { notFound } from "next/navigation"
 
@@ -15,6 +16,8 @@ export default async function BillPage({ params }: { params: Promise<{ id: strin
   
   if (!bill) return notFound()
 
+  const session = await getSession()
+  const canOperatePayments = session?.user.peran === "KASIR" || session?.user.peran === "MANAJER"
   const menuItems = await prisma.menuItem.findMany({
     where: { isDeleted: false },
     orderBy: { kategori: 'asc' }
@@ -46,6 +49,7 @@ export default async function BillPage({ params }: { params: Promise<{ id: strin
 
       <BillClient 
         billId={bill.id} 
+        canOperatePayments={canOperatePayments}
         menuItems={menuItems}
         initialBillItems={bill.billItems}
         initialPayments={bill.payments}

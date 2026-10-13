@@ -14,18 +14,21 @@ export default async function MenuPage() {
   const totalHabis = menuItems.length - totalTersedia
 
   return (
-    <main className="container mx-auto space-y-6 p-4">
-      <header className="flex flex-col gap-3 border-b border-zinc-800 pb-4 sm:flex-row sm:items-center sm:justify-between">
-        <h1 className="flex items-center gap-3 text-3xl font-bold">
-          <BookOpen className="h-8 w-8 text-emerald-500" />
-          Manajemen Menu
-        </h1>
-        <div className="flex gap-4 text-sm">
-          <span className="text-emerald-400">{totalTersedia} tersedia</span>
-          <span className={totalHabis > 0 ? "text-red-400" : "text-zinc-400"}>
-            {totalHabis} habis
-          </span>
+    <main className="mx-auto w-full max-w-7xl space-y-5 px-4 py-5 sm:px-6">
+      <header className="flex flex-col gap-3 border-b border-zinc-800 pb-4 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <p className="mb-1 text-xs font-medium text-amber-400">PENGELOLAAN</p>
+          <h1 className="flex items-center gap-2 text-2xl font-semibold tracking-tight text-white">
+            <BookOpen className="h-5 w-5 text-amber-400" />
+            Menu
+          </h1>
+          <p className="mt-1 text-sm text-zinc-400">Kelola daftar, harga, dan ketersediaan menu.</p>
         </div>
+        <p className="text-sm tabular-nums text-zinc-400">
+          <span className="text-zinc-200">{totalTersedia}</span> tersedia
+          <span className="mx-2 text-zinc-700">·</span>
+          <span className={totalHabis > 0 ? "text-amber-300" : "text-zinc-500"}>{totalHabis} habis</span>
+        </p>
       </header>
 
       <MenuClient menuItems={menuItems} />

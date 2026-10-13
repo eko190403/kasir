@@ -2,15 +2,16 @@
 
 import { useState } from "react"
 import { getEndOfDayReport } from "@/app/actions"
-import { FileDown, Printer, TrendingUp, Receipt, AlertTriangle, Gift, Users, Clock } from "lucide-react"
+import { Printer, TrendingUp } from "lucide-react"
 
 export default function EODReportClient() {
   const today = new Date().toLocaleDateString('en-CA')
   const [tanggal, setTanggal] = useState(today)
-  const [report, setReport] = useState<any>(null)
+  const [report, setReport] = useState<Awaited<ReturnType<typeof getEndOfDayReport>> | null>(null)
   const [loading, setLoading] = useState(false)
 
   const handleGenerate = async () => {
+    if (!tanggal) return
     setLoading(true)
     try {
       const r = await getEndOfDayReport(tanggal)
@@ -23,95 +24,109 @@ export default function EODReportClient() {
   const handlePrint = () => window.print()
 
   const fmt = (n: number) => `Rp ${n.toLocaleString('id-ID')}`
+  const cashStatusLabel: Record<string, string> = {
+    SESUAI: "Sesuai",
+    WASPADA: "Perlu diperiksa",
+    KRITIS: "Perlu tindakan",
+    BELUM_DITUTUP: "Shift belum ditutup",
+  }
+  const panelClass = "rounded-lg border border-zinc-800 bg-zinc-900 p-4 sm:p-5"
+  const panelHeadingClass = "mb-4 border-b border-zinc-800 pb-3 text-base font-semibold text-zinc-100"
 
   return (
-    <div className="space-y-6">
-      {/* Date Picker */}
-      <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center">
-        <div className="flex items-center gap-3 bg-zinc-900 border border-zinc-800 rounded-xl p-3">
-          <Clock className="w-4 h-4 text-zinc-400" />
+    <div className="space-y-5">
+      <div className="flex flex-col items-start gap-3 sm:flex-row sm:items-end">
+        <label className="flex flex-col gap-1 text-xs text-zinc-400">
+          Tanggal laporan
           <input
             type="date"
             value={tanggal}
-            onChange={e => setTanggal(e.target.value)}
-            className="bg-transparent text-sm focus:outline-none text-white"
+            onChange={e => {
+              setTanggal(e.target.value)
+              setReport(null)
+            }}
+            className="h-10 rounded-md border border-zinc-700 bg-zinc-900 px-3 text-sm text-white focus:border-amber-500 focus:outline-none"
           />
-        </div>
+        </label>
         <button
           onClick={handleGenerate}
-          disabled={loading}
-          className="px-6 py-3 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-xl transition disabled:opacity-50 flex items-center gap-2"
+          disabled={loading || !tanggal}
+          className="flex h-10 items-center gap-2 rounded-md bg-amber-600 px-4 text-sm font-medium text-white transition-colors hover:bg-amber-500 disabled:cursor-not-allowed disabled:opacity-50"
         >
-          <TrendingUp className="w-4 h-4" />
-          {loading ? "Memuat..." : "Generate Laporan"}
+          {loading ? "Memuat laporan..." : "Tampilkan laporan"}
         </button>
         {report && (
           <button
             onClick={handlePrint}
-            className="px-6 py-3 bg-zinc-700 hover:bg-zinc-600 font-bold rounded-xl transition flex items-center gap-2 print:hidden"
+            className="print:hidden flex h-10 items-center gap-2 rounded-md border border-zinc-700 bg-zinc-900 px-3 text-sm font-medium text-zinc-300 transition-colors hover:bg-zinc-800 hover:text-white"
           >
-            <Printer className="w-4 h-4" /> Cetak
+            <Printer className="h-4 w-4" /> Cetak
           </button>
         )}
       </div>
 
       {report && (
-        <div className="space-y-6" id="eod-report">
-          {/* Summary Header */}
-          <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6">
-            <h2 className="text-lg font-bold mb-1">Laporan Harian</h2>
-            <p className="text-zinc-400 text-sm mb-5">
-              {new Date(tanggal).toLocaleDateString('id-ID', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
-            </p>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <div className="space-y-5" id="eod-report">
+          <section className={panelClass}>
+            <div className="mb-4">
+              <h2 className="text-base font-semibold text-zinc-100">Ringkasan penjualan</h2>
+              <p className="mt-1 text-sm text-zinc-400">
+                {new Date(tanggal).toLocaleDateString('id-ID', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
+              </p>
+            </div>
+            <div className="grid grid-cols-2 gap-px overflow-hidden rounded-md border border-zinc-800 bg-zinc-800 sm:grid-cols-4">
               {[
-                { label: 'Total Transaksi', value: `${report.totalTransaksi} Bill`, icon: Receipt, color: 'from-blue-600 to-blue-800', text: 'text-blue-300' },
-                { label: 'Pendapatan Bersih', value: fmt(report.totalPendapatan), icon: TrendingUp, color: 'from-emerald-600 to-emerald-800', text: 'text-emerald-300' },
-                { label: 'Void (Nominal)', value: fmt(report.totalVoidNominal), icon: AlertTriangle, color: 'from-red-700 to-red-900', text: 'text-red-300' },
-                { label: 'Comp (Nominal)', value: fmt(report.totalCompNominal), icon: Gift, color: 'from-purple-600 to-purple-900', text: 'text-purple-300' },
-              ].map(({ label, value, icon: Icon, color, text }) => (
-                <div key={label} className={`bg-gradient-to-br ${color} p-4 rounded-xl`}>
-                  <Icon className={`w-5 h-5 ${text} mb-2`} />
-                  <div className={`text-lg font-black ${text}`}>{value}</div>
-                  <div className="text-xs text-white/60 mt-1">{label}</div>
+                { label: 'Transaksi lunas', value: `${report.totalTransaksi} bill` },
+                { label: 'Pendapatan', value: fmt(report.totalPendapatan), primary: true },
+                { label: 'Void', value: fmt(report.totalVoidNominal) },
+                { label: 'Comp', value: fmt(report.totalCompNominal) },
+              ].map(({ label, value, primary }) => (
+                <div key={label} className="min-w-0 bg-zinc-950/60 px-4 py-4">
+                  <div className="mb-2 text-xs text-zinc-400">{label}</div>
+                  <div className={`truncate text-lg font-semibold tabular-nums ${primary ? "text-amber-300" : "text-zinc-100"}`}>{value}</div>
                 </div>
               ))}
             </div>
-          </div>
+          </section>
 
-          <div className={`rounded-2xl border p-6 ${report.cashStatus === 'SESUAI' ? 'border-emerald-800/60 bg-emerald-950/20' : report.cashStatus === 'WASPADA' || report.cashStatus === 'BELUM_DITUTUP' ? 'border-amber-800/60 bg-amber-950/20' : 'border-red-800/60 bg-red-950/20'}`}>
+          <section className={panelClass}>
             <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
               <div>
-                <p className="text-xs uppercase tracking-[0.18em] text-zinc-300">Status Rekonsiliasi Kas</p>
-                <h3 className="mt-2 text-2xl font-black text-white">{report.cashStatus}</h3>
+                <h3 className="text-base font-semibold text-zinc-100">Rekonsiliasi kas</h3>
+                <p className="mt-1 text-sm text-zinc-400">{report.cashStatusMessage}</p>
               </div>
-              <div className="rounded-full border border-white/10 bg-black/20 px-3 py-1 text-sm text-zinc-100">
-                Toleransi ± {fmt(report.cashTolerance)}
+              <div className={`w-fit rounded-md border px-3 py-1.5 text-sm font-medium ${
+                report.cashStatus === "SESUAI" ? "border-emerald-800 bg-emerald-950/30 text-emerald-300"
+                  : report.cashStatus === "KRITIS" ? "border-red-800 bg-red-950/30 text-red-300"
+                    : report.cashStatus === "WASPADA" || report.cashStatus === "BELUM_DITUTUP" ? "border-amber-800 bg-amber-950/30 text-amber-300"
+                      : "border-zinc-700 bg-zinc-800 text-zinc-300"
+              }`}>
+                {cashStatusLabel[report.cashStatus] || "Status tidak diketahui"}
               </div>
             </div>
-            <p className="mt-3 text-sm text-zinc-200">{report.cashStatusMessage}</p>
-            <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-3">
-              <div className="rounded-xl border border-zinc-800 bg-zinc-950/40 p-3">
-                <div className="text-[10px] uppercase tracking-[0.14em] text-zinc-400">Kas Akhir Aktual</div>
-                <div className="mt-2 text-xl font-black text-white">{report.cashDifference === null ? '-' : fmt(report.actualClosingCash)}</div>
+            <p className="mt-3 text-xs text-zinc-500">Batas toleransi: ± {fmt(report.cashTolerance)}</p>
+            <div className="mt-4 grid grid-cols-1 gap-px overflow-hidden rounded-md border border-zinc-800 bg-zinc-800 sm:grid-cols-3">
+              <div className="bg-zinc-950/60 p-4">
+                <div className="text-xs text-zinc-400">Kas akhir aktual</div>
+                <div className="mt-2 text-lg font-medium tabular-nums text-zinc-100">{report.cashDifference === null ? '-' : fmt(report.actualClosingCash)}</div>
               </div>
-              <div className="rounded-xl border border-zinc-800 bg-zinc-950/40 p-3">
-                <div className="text-[10px] uppercase tracking-[0.14em] text-zinc-400">Kas Diharapkan</div>
-                <div className="mt-2 text-xl font-black text-white">{fmt(report.expectedCash)}</div>
+              <div className="bg-zinc-950/60 p-4">
+                <div className="text-xs text-zinc-400">Kas yang diharapkan</div>
+                <div className="mt-2 text-lg font-medium tabular-nums text-zinc-100">{fmt(report.expectedCash)}</div>
               </div>
-              <div className={`rounded-xl border p-3 ${report.cashDifference === null ? 'border-zinc-700 bg-zinc-900' : report.cashDifference >= 0 ? 'border-emerald-700/50 bg-emerald-950/20' : 'border-red-700/50 bg-red-950/20'}`}>
-                <div className="text-[10px] uppercase tracking-[0.14em] text-zinc-300">Selisih</div>
-                <div className={`mt-2 text-xl font-black ${report.cashDifference === null ? 'text-zinc-400' : report.cashDifference >= 0 ? 'text-emerald-300' : 'text-red-300'}`}>
+              <div className="bg-zinc-950/60 p-4">
+                <div className="text-xs text-zinc-400">Selisih kas</div>
+                <div className={`mt-2 text-lg font-medium tabular-nums ${report.cashDifference === null ? 'text-zinc-400' : report.cashDifference >= 0 ? 'text-emerald-300' : 'text-red-300'}`}>
                   {report.cashDifference === null ? 'Belum dihitung' : report.cashDifference >= 0 ? `+ ${fmt(report.cashDifference)}` : `- ${fmt(Math.abs(report.cashDifference))}`}
                 </div>
               </div>
             </div>
-          </div>
+          </section>
 
           {/* Rincian Keuangan */}
-          <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6">
-            <h3 className="font-bold mb-4 flex items-center gap-2"><TrendingUp className="w-4 h-4 text-emerald-400" /> Rincian Keuangan</h3>
-            <div className="space-y-2 text-sm max-w-sm">
+          <section className={panelClass}>
+            <h3 className={panelHeadingClass}>Rincian keuangan</h3>
+            <div className="max-w-xl divide-y divide-zinc-800 text-sm">
               {[
                 { label: 'Subtotal Penjualan', val: report.totalSubtotal, cls: '' },
                 { label: 'Service Charge', val: report.totalService, cls: 'text-zinc-400' },
@@ -119,18 +134,18 @@ export default function EODReportClient() {
                 { label: 'Pembulatan', val: report.totalPembulatan, cls: 'text-zinc-400' },
                 { label: 'Diskon Diberikan', val: -report.totalDiskon, cls: 'text-red-400' },
               ].map(({ label, val, cls }) => (
-                <div key={label} className="flex justify-between">
+                <div key={label} className="flex justify-between gap-4 py-2.5">
                   <span className={`text-zinc-400 ${cls}`}>{label}</span>
-                  <span className={cls || 'font-medium'}>{val < 0 ? `- ${fmt(-val)}` : fmt(val)}</span>
+                  <span className={`tabular-nums ${cls || 'font-medium text-zinc-200'}`}>{val < 0 ? `- ${fmt(-val)}` : fmt(val)}</span>
                 </div>
               ))}
-              <div className="flex justify-between font-bold text-base border-t border-zinc-700 pt-2 mt-2 text-emerald-400">
-                <span>TOTAL PENDAPATAN</span>
-                <span>{fmt(report.totalPendapatan)}</span>
+              <div className="flex justify-between gap-4 py-3 text-base font-semibold text-amber-300">
+                <span>Total pendapatan</span>
+                <span className="tabular-nums">{fmt(report.totalPendapatan)}</span>
               </div>
             </div>
 
-            <div className="mt-6 grid grid-cols-2 md:grid-cols-4 gap-3">
+            <div className="mt-5 grid grid-cols-2 gap-px overflow-hidden rounded-md border border-zinc-800 bg-zinc-800 sm:grid-cols-3 xl:grid-cols-5">
               {[
                 { label: 'Kas Awal', value: report.openingCash },
                 { label: 'Penjualan Tunai', value: report.cashSales },
@@ -138,80 +153,60 @@ export default function EODReportClient() {
                 { label: 'Kas Keluar', value: -report.expenseCash },
                 { label: 'Kas Diharapkan', value: report.expectedCash },
               ].map(({ label, value }) => (
-                <div key={label} className="bg-zinc-800 rounded-xl p-3 border border-zinc-700">
-                  <div className="text-[10px] uppercase tracking-wide text-zinc-400 mb-2">{label}</div>
-                  <div className="text-base font-black text-white">{fmt(value)}</div>
+                <div key={label} className="bg-zinc-950/60 p-3">
+                  <div className="mb-2 text-xs text-zinc-400">{label}</div>
+                  <div className="text-sm font-medium tabular-nums text-zinc-100">{fmt(value)}</div>
                 </div>
               ))}
             </div>
-          </div>
-
-          <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6">
-            <h3 className="font-bold mb-4">Rekonsiliasi Kas</h3>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
-              <div className="bg-zinc-800 rounded-xl p-4">
-                <div className="text-zinc-400 text-xs uppercase">Kas Akhir Aktual</div>
-                <div className="mt-2 text-xl font-black text-emerald-400">{report.cashDifference === null ? '-' : fmt(report.actualClosingCash)}</div>
-              </div>
-              <div className="bg-zinc-800 rounded-xl p-4">
-                <div className="text-zinc-400 text-xs uppercase">Kas Diharapkan</div>
-                <div className="mt-2 text-xl font-black text-blue-400">{fmt(report.expectedCash)}</div>
-              </div>
-              <div className={`rounded-xl p-4 ${report.cashDifference === null ? 'bg-zinc-800' : report.cashDifference >= 0 ? 'bg-emerald-950/40 border border-emerald-500/30' : 'bg-red-950/40 border border-red-500/30'}`}>
-                <div className="text-zinc-300 text-xs uppercase">Selisih</div>
-                <div className={`mt-2 text-xl font-black ${report.cashDifference === null ? 'text-zinc-400' : report.cashDifference >= 0 ? 'text-emerald-300' : 'text-red-300'}`}>
-                  {report.cashDifference === null ? 'Belum dihitung' : report.cashDifference >= 0 ? `+ ${fmt(report.cashDifference)}` : `- ${fmt(Math.abs(report.cashDifference))}`}
-                </div>
-              </div>
-            </div>
-          </div>
+          </section>
 
           {/* Metode Bayar */}
-          <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6">
-            <h3 className="font-bold mb-4">Metode Pembayaran</h3>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-              {Object.entries(report.byMetode as Record<string, { count: number; total: number }>).map(([metode, data]) => (
-                <div key={metode} className="bg-zinc-800 rounded-xl p-4">
-                  <div className="font-bold text-sm">{metode}</div>
-                  <div className="text-emerald-400 font-black text-lg">{fmt(data.total)}</div>
-                  <div className="text-zinc-500 text-xs">{data.count} transaksi</div>
+          <section className={panelClass}>
+            <h3 className={panelHeadingClass}>Metode pembayaran</h3>
+            <div className="grid grid-cols-1 gap-px overflow-hidden rounded-md border border-zinc-800 bg-zinc-800 sm:grid-cols-3">
+              {Object.entries(report.byMetode).map(([metode, data]) => (
+                <div key={metode} className="bg-zinc-950/60 p-4">
+                  <div className="text-sm font-medium text-zinc-200">{metode}</div>
+                  <div className="mt-2 text-lg font-semibold tabular-nums text-zinc-100">{fmt(data.total)}</div>
+                  <div className="mt-1 text-xs text-zinc-500">{data.count} transaksi</div>
                 </div>
               ))}
               {Object.keys(report.byMetode).length === 0 && (
                 <div className="text-zinc-500 text-sm italic col-span-3">Tidak ada transaksi.</div>
               )}
             </div>
-          </div>
+          </section>
 
           {/* Shift Summary */}
           {report.shifts.length > 0 && (
-            <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6">
-              <h3 className="font-bold mb-4 flex items-center gap-2"><Users className="w-4 h-4 text-blue-400" /> Ringkasan Shift</h3>
+            <section className={panelClass}>
+              <h3 className={panelHeadingClass}>Ringkasan shift</h3>
               <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead className="text-xs text-zinc-500">
+                <table className="w-full min-w-[760px] text-sm">
+                  <thead className="border-b border-zinc-800 text-xs text-zinc-500">
                     <tr>
-                      <th className="text-left pb-2">Kasir</th>
-                      <th className="text-left pb-2">Buka</th>
-                      <th className="text-left pb-2">Tutup</th>
-                      <th className="text-right pb-2">Kas Awal</th>
-                      <th className="text-right pb-2">Penjualan</th>
-                      <th className="text-right pb-2">Kas Keluar</th>
-                      <th className="text-right pb-2">Kas Dihitung</th>
-                      <th className="text-right pb-2">Selisih</th>
+                      <th className="py-3 text-left font-medium">Kasir</th>
+                      <th className="py-3 text-left font-medium">Buka</th>
+                      <th className="py-3 text-left font-medium">Tutup</th>
+                      <th className="py-3 text-right font-medium">Kas awal</th>
+                      <th className="py-3 text-right font-medium">Penjualan</th>
+                      <th className="py-3 text-right font-medium">Kas keluar</th>
+                      <th className="py-3 text-right font-medium">Kas dihitung</th>
+                      <th className="py-3 text-right font-medium">Selisih</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-zinc-800">
-                    {report.shifts.map((s: any) => (
-                      <tr key={s.id}>
-                        <td className="py-2 font-medium">{s.kasir?.nama}</td>
-                        <td className="py-2 text-xs text-zinc-400">{new Date(s.waktuBuka).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}</td>
-                        <td className="py-2 text-xs text-zinc-400">{s.waktuTutup ? new Date(s.waktuTutup).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) : <span className="text-amber-400">Aktif</span>}</td>
-                        <td className="py-2 text-right">{fmt(s.kasAwal)}</td>
-                        <td className="py-2 text-right text-emerald-400">{fmt(s.totalPenjualan || 0)}</td>
-                        <td className="py-2 text-right text-red-400">{fmt(s.pengeluaran)}</td>
-                        <td className="py-2 text-right font-bold">{s.kasHitung === null ? '-' : fmt(s.kasHitung)}</td>
-                        <td className={`py-2 text-right font-bold ${s.selisih === null ? 'text-zinc-500' : s.selisih === 0 ? 'text-emerald-400' : 'text-amber-400'}`}>
+                    {report.shifts.map((s) => (
+                      <tr key={s.id} className="transition-colors hover:bg-zinc-800/40">
+                        <td className="py-3 font-medium text-zinc-200">{s.kasir?.nama}</td>
+                        <td className="py-3 tabular-nums text-zinc-400">{new Date(s.waktuBuka).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}</td>
+                        <td className="py-3 tabular-nums text-zinc-400">{s.waktuTutup ? new Date(s.waktuTutup).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) : <span className="text-amber-300">Aktif</span>}</td>
+                        <td className="py-3 text-right tabular-nums text-zinc-300">{fmt(s.kasAwal)}</td>
+                        <td className="py-3 text-right tabular-nums text-zinc-300">{fmt(s.totalPenjualan || 0)}</td>
+                        <td className="py-3 text-right tabular-nums text-zinc-300">{fmt(s.pengeluaran)}</td>
+                        <td className="py-3 text-right tabular-nums text-zinc-300">{s.kasHitung === null ? '-' : fmt(s.kasHitung)}</td>
+                        <td className={`py-3 text-right font-medium tabular-nums ${s.selisih === null ? 'text-zinc-500' : s.selisih === 0 ? 'text-emerald-300' : 'text-amber-300'}`}>
                           {s.selisih === null ? '-' : fmt(s.selisih)}
                         </td>
                       </tr>
@@ -219,124 +214,119 @@ export default function EODReportClient() {
                   </tbody>
                 </table>
               </div>
-            </div>
+            </section>
           )}
 
           {/* bySofa Aggregate */}
           {report.bySofa && Object.keys(report.bySofa).length > 0 && (
-            <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6">
-              <h3 className="font-bold mb-4 flex items-center gap-2"><TrendingUp className="w-4 h-4 text-emerald-400" /> Performa per Meja / Sofa</h3>
+            <section className={panelClass}>
+              <h3 className={panelHeadingClass}>Penjualan per meja/area</h3>
               <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead className="text-xs text-zinc-500">
+                <table className="w-full min-w-[560px] text-sm">
+                  <thead className="border-b border-zinc-800 text-xs text-zinc-500">
                     <tr>
-                      <th className="text-left pb-2">Nama Meja / Tipe</th>
-                      <th className="text-right pb-2">Jumlah Bill</th>
-                      <th className="text-right pb-2">Rata-rata/Bill</th>
-                      <th className="text-right pb-2">Total Pendapatan</th>
+                      <th className="py-3 text-left font-medium">Meja / jenis</th>
+                      <th className="py-3 text-right font-medium">Jumlah bill</th>
+                      <th className="py-3 text-right font-medium">Rata-rata/bill</th>
+                      <th className="py-3 text-right font-medium">Pendapatan</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-zinc-800">
                     {Object.entries(report.bySofa)
-                      .sort((a: any, b: any) => b[1].total - a[1].total)
-                      .map(([key, data]: [string, any]) => (
-                        <tr key={key}>
-                          <td className="py-2">{data.nama}</td>
-                          <td className="py-2 text-right">{data.count}</td>
-                          <td className="py-2 text-right text-zinc-400">{fmt(data.average)}</td>
-                          <td className="py-2 text-right font-bold text-emerald-400">{fmt(data.total)}</td>
+                      .sort(([, a], [, b]) => b.total - a.total)
+                      .map(([key, data]) => (
+                        <tr key={key} className="transition-colors hover:bg-zinc-800/40">
+                          <td className="py-3 font-medium text-zinc-200">{data.nama}</td>
+                          <td className="py-3 text-right tabular-nums text-zinc-300">{data.count}</td>
+                          <td className="py-3 text-right tabular-nums text-zinc-400">{fmt(data.average)}</td>
+                          <td className="py-3 text-right font-medium tabular-nums text-zinc-100">{fmt(data.total)}</td>
                         </tr>
-                    ))}
+                      ))}
                   </tbody>
                 </table>
               </div>
-            </div>
+            </section>
           )}
 
-          {/* Void & Comp Detail */}
           {(report.voidItems.length > 0 || report.compItems.length > 0) && (
-            <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6">
-              <h3 className="font-bold mb-4 flex items-center gap-2"><AlertTriangle className="w-4 h-4 text-amber-400" /> Detail Void & Comp</h3>
+            <section className={panelClass}>
+              <h3 className={panelHeadingClass}>Detail void dan comp</h3>
               <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead className="text-xs text-zinc-500">
+                <table className="w-full min-w-[680px] text-sm">
+                  <thead className="border-b border-zinc-800 text-xs text-zinc-500">
                     <tr>
-                      <th className="text-left pb-2">Tipe</th>
-                      <th className="text-left pb-2">Item</th>
-                      <th className="text-right pb-2">Qty</th>
-                      <th className="text-right pb-2">Nominal</th>
-                      <th className="text-left pb-2">Alasan</th>
-                      <th className="text-left pb-2">Otorisasi</th>
+                      <th className="py-3 text-left font-medium">Tipe</th>
+                      <th className="py-3 text-left font-medium">Item</th>
+                      <th className="py-3 text-right font-medium">Qty</th>
+                      <th className="py-3 text-right font-medium">Nominal</th>
+                      <th className="py-3 text-left font-medium">Alasan</th>
+                      <th className="py-3 text-left font-medium">Otorisasi</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-zinc-800">
-                    {report.voidItems.map((i: any) => (
-                      <tr key={i.id}>
-                        <td className="py-1.5"><span className="text-xs px-2 py-0.5 bg-red-900/50 text-red-400 rounded font-bold">VOID</span></td>
-                        <td className="py-1.5">{i.namaItem}</td>
-                        <td className="py-1.5 text-right">{i.qty}</td>
-                        <td className="py-1.5 text-right text-red-400">{fmt(i.harga * i.qty)}</td>
-                        <td className="py-1.5 text-zinc-400 text-xs">{i.alasanVoidComp || '-'}</td>
-                        <td className="py-1.5 text-zinc-400 text-xs">{i.otorisasiOleh || '-'}</td>
-                      </tr>
-                    ))}
-                    {report.compItems.map((i: any) => (
-                      <tr key={i.id}>
-                        <td className="py-1.5"><span className="text-xs px-2 py-0.5 bg-purple-900/50 text-purple-400 rounded font-bold">COMP</span></td>
-                        <td className="py-1.5">{i.namaItem}</td>
-                        <td className="py-1.5 text-right">{i.qty}</td>
-                        <td className="py-1.5 text-right text-purple-400">{fmt(i.harga * i.qty)}</td>
-                        <td className="py-1.5 text-zinc-400 text-xs">{i.alasanVoidComp || '-'}</td>
-                        <td className="py-1.5 text-zinc-400 text-xs">{i.otorisasiOleh || '-'}</td>
+                    {[
+                      ...report.voidItems.map((item) => ({ ...item, jenis: "VOID" as const })),
+                      ...report.compItems.map((item) => ({ ...item, jenis: "COMP" as const })),
+                    ].map((item) => (
+                      <tr key={`${item.jenis}-${item.id}`} className="transition-colors hover:bg-zinc-800/40">
+                        <td className="py-3">
+                          <span className={`rounded px-2 py-1 text-xs font-medium ${item.jenis === "VOID" ? "bg-red-950/40 text-red-300" : "bg-purple-950/40 text-purple-300"}`}>
+                            {item.jenis}
+                          </span>
+                        </td>
+                        <td className="py-3 text-zinc-200">{item.namaItem}</td>
+                        <td className="py-3 text-right tabular-nums text-zinc-300">{item.qty}</td>
+                        <td className="py-3 text-right tabular-nums text-zinc-200">{fmt(item.harga * item.qty)}</td>
+                        <td className="py-3 text-zinc-400">{item.alasanVoidComp || "-"}</td>
+                        <td className="py-3 text-zinc-400">{item.otorisasiOleh || "-"}</td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
               </div>
-            </div>
+            </section>
           )}
 
-          {/* Daftar Transaksi */}
-          <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6">
-            <h3 className="font-bold mb-4 flex items-center gap-2"><Receipt className="w-4 h-4 text-zinc-400" /> Daftar Transaksi ({report.bills.length})</h3>
+          <section className={panelClass}>
+            <h3 className={panelHeadingClass}>Daftar transaksi ({report.bills.length})</h3>
             {report.bills.length === 0 ? (
-              <p className="text-zinc-500 italic text-sm">Tidak ada transaksi pada tanggal ini.</p>
+              <p className="text-sm text-zinc-500">Tidak ada transaksi pada tanggal ini.</p>
             ) : (
               <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead className="text-xs text-zinc-500">
+                <table className="w-full min-w-[640px] text-sm">
+                  <thead className="border-b border-zinc-800 text-xs text-zinc-500">
                     <tr>
-                      <th className="text-left pb-2">No.</th>
-                      <th className="text-left pb-2">Meja/Tipe</th>
-                      <th className="text-left pb-2">Kasir</th>
-                      <th className="text-left pb-2">Waktu Tutup</th>
-                      <th className="text-left pb-2">Metode</th>
-                      <th className="text-right pb-2">Total</th>
+                      <th className="py-3 text-left font-medium">No.</th>
+                      <th className="py-3 text-left font-medium">Meja/tipe</th>
+                      <th className="py-3 text-left font-medium">Kasir</th>
+                      <th className="py-3 text-left font-medium">Waktu tutup</th>
+                      <th className="py-3 text-left font-medium">Metode</th>
+                      <th className="py-3 text-right font-medium">Total</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-zinc-800">
-                    {report.bills.map((b: any) => (
-                      <tr key={b.id} className="hover:bg-zinc-800/50">
-                        <td className="py-1.5 font-mono text-zinc-500">{b.nomorBill ? `#${String(b.nomorBill).padStart(3,'0')}` : '-'}</td>
-                        <td className="py-1.5">{b.sofa?.nama || b.tipe.replace('_', ' ')}</td>
-                        <td className="py-1.5 text-zinc-400">{b.kasir?.nama || '-'}</td>
-                        <td className="py-1.5 text-xs text-zinc-400">{b.waktuTutup ? new Date(b.waktuTutup).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) : '-'}</td>
-                        <td className="py-1.5"><span className="text-xs px-1.5 py-0.5 bg-zinc-800 rounded">{b.metodeBayar}</span></td>
-                        <td className="py-1.5 text-right font-bold text-emerald-400">{fmt(b.total)}</td>
+                    {report.bills.map((bill) => (
+                      <tr key={bill.id} className="transition-colors hover:bg-zinc-800/40">
+                        <td className="py-3 font-mono text-xs text-zinc-500">{bill.nomorBill ? `#${String(bill.nomorBill).padStart(3, "0")}` : "-"}</td>
+                        <td className="py-3 text-zinc-200">{bill.sofa?.nama || bill.tipe.replace("_", " ")}</td>
+                        <td className="py-3 text-zinc-400">{bill.kasir?.nama || "-"}</td>
+                        <td className="py-3 tabular-nums text-zinc-400">{bill.waktuTutup ? new Date(bill.waktuTutup).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" }) : "-"}</td>
+                        <td className="py-3 text-zinc-400">{bill.metodeBayar}</td>
+                        <td className="py-3 text-right font-medium tabular-nums text-zinc-100">{fmt(bill.total)}</td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
               </div>
             )}
-          </div>
+          </section>
         </div>
       )}
 
       {!report && !loading && (
         <div className="text-center py-16 text-zinc-600">
-          <TrendingUp className="w-12 h-12 mx-auto mb-3 opacity-30" />
-          <p>Pilih tanggal dan klik "Generate Laporan" untuk melihat laporan harian.</p>
+          <TrendingUp className="mx-auto mb-3 h-9 w-9 opacity-40" />
+          <p className="text-sm">Pilih tanggal, lalu tampilkan laporan harian.</p>
         </div>
       )}
     </div>

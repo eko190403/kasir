@@ -4,7 +4,7 @@ import { createTakeAwayOrder } from "./actions"
 import { prisma } from "@/lib/prisma"
 import { getStartOfDayWIB, getEndOfDayWIB } from "@/lib/timezone"
 import { cashSalesForBill } from "@/lib/shift-math"
-import { Utensils, ShoppingBag, Calendar, ListTodo, BookOpen, PieChart, Wallet, ChefHat, Wine, Users, Settings, Sparkles } from "lucide-react"
+import { Utensils, ShoppingBag, Calendar, ListTodo, BookOpen, PieChart, Wallet, ChefHat, Wine, Users, Settings } from "lucide-react"
 
 export const instant = false
 
@@ -39,94 +39,96 @@ export default async function Home() {
     currency: "IDR",
     maximumFractionDigits: 0
   }).format(value)
-  const buttonBase = "flex flex-col items-center justify-center rounded-xl border border-zinc-800 bg-zinc-900 p-6 text-center text-zinc-300 shadow-lg transition hover:text-white active:scale-95 md:h-32"
+  const quickActionClass = "flex min-h-20 items-center gap-4 rounded-lg border border-zinc-800 bg-zinc-900 px-4 py-4 text-left text-zinc-200 transition-colors hover:border-amber-700/70 hover:bg-zinc-800 active:bg-zinc-800"
+  const sectionTitleClass = "mb-3 text-sm font-semibold text-zinc-200"
 
   return (
-    <main className="min-h-[calc(100vh-4rem)] bg-zinc-950 p-4">
-      <div className="mx-auto w-full max-w-6xl space-y-8">
-        <header className="flex flex-col gap-2 border-b border-zinc-800 pb-4 md:flex-row md:items-center md:justify-between">
+    <main className="min-h-[calc(100vh-3.5rem)] bg-zinc-950 px-4 py-6 sm:px-6">
+      <div className="mx-auto w-full max-w-6xl space-y-7">
+        <header className="flex flex-col gap-1 border-b border-zinc-800 pb-5 sm:flex-row sm:items-end sm:justify-between">
           <div>
-            <p className="text-xs uppercase tracking-[0.2em] text-amber-400">Superbar</p>
-            <h1 className="text-2xl font-black text-white md:text-3xl">Dashboard Operasional</h1>
+            <p className="mb-1 text-xs font-medium text-amber-400">SUPERBAR · KASIR</p>
+            <h1 className="text-2xl font-semibold text-white md:text-3xl">Operasional</h1>
           </div>
-          <div className="inline-flex items-center gap-2 rounded-full border border-amber-700/40 bg-amber-500/10 px-3 py-1.5 text-sm text-amber-300">
-            <Sparkles className="h-4 w-4" />
+          <p className="mt-2 text-sm text-zinc-400 sm:mt-0">
             {todayStart.toLocaleDateString("id-ID", { weekday: "long", day: "numeric", month: "long", year: "numeric" })}
-          </div>
+          </p>
         </header>
 
-        <section className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-6">
+        <section aria-label="Ringkasan hari ini" className="grid grid-cols-2 gap-px overflow-hidden rounded-lg border border-zinc-800 bg-zinc-800 sm:grid-cols-3 xl:grid-cols-6">
           {[
-            { label: "Pendapatan Hari Ini", value: money(todayRevenue), icon: Wallet },
-            { label: "Avg Ticket", value: money(avgTicket), icon: PieChart },
-            { label: "Transaksi Selesai", value: `${todayBills.length} bill`, icon: ShoppingBag },
-            { label: "Cash Sales", value: money(cashSales), icon: Wallet },
-            { label: "Order Masih Aktif", value: `${openOrderCount} bill`, icon: ListTodo },
-            { label: "Reservasi Menunggu", value: `${reservationCount} jadwal`, icon: Calendar }
-          ].map(({ label, value, icon: Icon }) => (
-            <div key={label} className="rounded-2xl border border-zinc-800 bg-zinc-900 p-4">
-              <div className="mb-3 flex items-center justify-between">
-                <span className="text-xs uppercase tracking-wider text-zinc-400">{label}</span>
-                <Icon className="h-5 w-5 text-amber-400" />
-              </div>
-              <div className="text-xl font-black text-white">{value}</div>
+            { label: "Pendapatan", value: money(todayRevenue) },
+            { label: "Rata-rata transaksi", value: money(avgTicket) },
+            { label: "Transaksi lunas", value: `${todayBills.length} bill` },
+            { label: "Pembayaran tunai", value: money(cashSales) },
+            { label: "Pesanan aktif", value: `${openOrderCount} bill` },
+            { label: "Reservasi", value: `${reservationCount} jadwal` }
+          ].map(({ label, value }) => (
+            <div key={label} className="min-w-0 bg-zinc-900 px-4 py-4 sm:px-5">
+              <p className="mb-2 text-xs text-zinc-400">{label}</p>
+              <p className="truncate text-lg font-semibold tabular-nums text-zinc-100 sm:text-xl">{value}</p>
             </div>
           ))}
         </section>
 
         <section>
-          <div className="mb-4 bg-amber-900/30 py-2 text-center text-sm font-bold uppercase tracking-widest text-amber-300">Receipt Type</div>
-          <div className="grid grid-cols-3 gap-4">
-            <Link href="/dine-in" className={`${buttonBase} hover:bg-amber-700`}>
-              <Utensils className="mb-3 h-10 w-10" /><span className="text-xs font-bold sm:text-sm">DINE IN</span>
+          <h2 className={sectionTitleClass}>Buat pesanan</h2>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+            <Link href="/dine-in" className={quickActionClass}>
+              <Utensils className="h-5 w-5 shrink-0 text-amber-400" />
+              <span>
+                <span className="block font-medium">Makan di tempat</span>
+                <span className="mt-1 block text-xs text-zinc-500">Pilih meja dan mulai pesanan</span>
+              </span>
             </Link>
-            <form action={createTakeAwayOrder} className="h-full">
-              <button type="submit" className={`${buttonBase} h-full w-full cursor-pointer hover:bg-amber-700`}>
-                <ShoppingBag className="mb-3 h-10 w-10" /><span className="text-xs font-bold sm:text-sm">TAKE AWAY</span>
+            <form action={createTakeAwayOrder}>
+              <button type="submit" className={`${quickActionClass} w-full`}>
+                <ShoppingBag className="h-5 w-5 shrink-0 text-amber-400" />
+                <span className="text-left">
+                  <span className="block font-medium">Bawa pulang</span>
+                  <span className="mt-1 block text-xs text-zinc-500">Buat pesanan tanpa meja</span>
+                </span>
               </button>
             </form>
-            <Link href="/reservasi" className={`${buttonBase} hover:bg-blue-700`}>
-              <Calendar className="mb-3 h-10 w-10" /><span className="text-xs font-bold sm:text-sm">RESERVATION</span>
+            <Link href="/reservasi" className={quickActionClass}>
+              <Calendar className="h-5 w-5 shrink-0 text-amber-400" />
+              <span>
+                <span className="block font-medium">Reservasi</span>
+                <span className="mt-1 block text-xs text-zinc-500">Lihat dan catat jadwal tamu</span>
+              </span>
             </Link>
           </div>
         </section>
 
         <section>
-          <div className="mb-4 bg-amber-900/30 py-2 text-center text-sm font-bold uppercase tracking-widest text-amber-300">Transaction</div>
-          <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
-            <Link href="/open-order" className={`${buttonBase} hover:bg-indigo-700`}>
-              <ListTodo className="mb-3 h-10 w-10" /><span className="text-xs font-bold sm:text-sm">OPEN ORDER</span>
+          <h2 className={sectionTitleClass}>Menu operasional</h2>
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+            <Link href="/open-order" className={quickActionClass}>
+              <ListTodo className="h-5 w-5 shrink-0 text-amber-400" /><span className="font-medium">Pesanan aktif</span>
             </Link>
-            <Link href="/menu" className={`${buttonBase} hover:bg-teal-700`}>
-              <BookOpen className="mb-3 h-10 w-10" /><span className="text-xs font-bold sm:text-sm">MENU STATUS</span>
+            <Link href="/menu" className={quickActionClass}>
+              <BookOpen className="h-5 w-5 shrink-0 text-amber-400" /><span className="font-medium">Menu</span>
             </Link>
-            <Link href="/summary" className={`${buttonBase} hover:bg-green-700`}>
-              <PieChart className="mb-3 h-10 w-10" /><span className="text-xs font-bold sm:text-sm">SUMMARY</span>
+            <Link href="/kitchen" className={quickActionClass}>
+              <ChefHat className="h-5 w-5 shrink-0 text-amber-400" /><span className="font-medium">Dapur</span>
             </Link>
-            <Link href="/shift" className={`${buttonBase} hover:bg-rose-700`}>
-              <Wallet className="mb-3 h-10 w-10" /><span className="text-xs font-bold sm:text-sm">SHIFT / KAS</span>
+            <Link href="/bar" className={quickActionClass}>
+              <Wine className="h-5 w-5 shrink-0 text-amber-400" /><span className="font-medium">Bar</span>
             </Link>
-          </div>
-        </section>
-
-        <section>
-          <div className="mb-4 bg-amber-900/30 py-2 text-center text-sm font-bold uppercase tracking-widest text-amber-300">Operation</div>
-          <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
-            <Link href="/kitchen" className={`${buttonBase} hover:bg-amber-700`}>
-              <ChefHat className="mb-3 h-10 w-10" /><span className="text-xs font-bold sm:text-sm">KITCHEN</span>
+            <Link href="/summary" className={quickActionClass}>
+              <PieChart className="h-5 w-5 shrink-0 text-amber-400" /><span className="font-medium">Ringkasan</span>
             </Link>
-            <Link href="/bar" className={`${buttonBase} hover:bg-blue-700`}>
-              <Wine className="mb-3 h-10 w-10" /><span className="text-xs font-bold sm:text-sm">BAR DRINKS</span>
+            <Link href="/shift" className={quickActionClass}>
+              <Wallet className="h-5 w-5 shrink-0 text-amber-400" /><span className="font-medium">Shift dan kas</span>
             </Link>
-            <Link href="/staf" className={`${buttonBase} hover:bg-purple-700`}>
-              <Users className="mb-3 h-10 w-10" /><span className="text-xs font-bold sm:text-sm">STAF</span>
+            <Link href="/staf" className={quickActionClass}>
+              <Users className="h-5 w-5 shrink-0 text-amber-400" /><span className="font-medium">Staf</span>
             </Link>
-            <Link href="/settings" className={`${buttonBase} hover:bg-zinc-700`}>
-              <Settings className="mb-3 h-10 w-10" /><span className="text-xs font-bold sm:text-sm">SETTINGS</span>
+            <Link href="/settings" className={quickActionClass}>
+              <Settings className="h-5 w-5 shrink-0 text-amber-400" /><span className="font-medium">Pengaturan</span>
             </Link>
           </div>
         </section>
-
       </div>
     </main>
   )

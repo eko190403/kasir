@@ -43,6 +43,7 @@ describe("cash reconciliation", () => {
     )).toEqual({
       totalPenjualan: 180_000,
       penjualanTunai: 100_000,
+      cashRefund: 0,
       expectedCash: 275_000,
       selisih: -5_000,
     })

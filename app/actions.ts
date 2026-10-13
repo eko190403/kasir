@@ -11,6 +11,7 @@ import { getStartOfDayWIB, getEndOfDayWIB, getOperationalBusinessDate, isTimeWit
 import { withSerializableRetry } from "@/lib/prisma"
 import type { Prisma } from "@prisma/client"
 import { computeShiftCash } from "@/lib/shift-math"
+import { canAccessBill } from "@/lib/bill-access"
 import {
   applyHappyHourDiscount,
   getHappyHourOriginalPrice,
@@ -20,6 +21,7 @@ import {
 } from "@/lib/menu-catalog"
 import { nextShiftExpenseTotal, normalizeShiftExpenseInput } from "@/lib/shift-expense"
 import { selectTargetManagerForFailedPinAttempt } from "@/lib/manager-pin-lock"
+import { paymentStatusForMethod, validatePaymentReference } from "@/lib/financial-controls"
 
 // ─── Auth Helpers ───────────────────────────────────────────────────
 const ROLE_ORDER = ["PELAYAN", "BARTENDER", "DAPUR", "KASIR", "MANAJER"] as const
@@ -165,7 +167,8 @@ async function requireMenuManager() {
 async function assertBillAccessForSession(
   tx: Prisma.TransactionClient,
   billId: string,
-  session: Awaited<ReturnType<typeof requireSession>>
+  session: Awaited<ReturnType<typeof requireSession>>,
+  managerAuthorized = false
 ) {
   const bill = await tx.bill.findUnique({
     where: { id: billId },
@@ -183,11 +186,11 @@ async function assertBillAccessForSession(
 
   if (!bill) throw new Error("Bill tidak ditemukan.")
 
-  if (session.user.peran === "KASIR") {
-    if (bill.kasirId && bill.kasirId !== session.user.id) {
-      throw new Error("Hanya kasir pemilik bill atau manager yang dapat mengelola bill ini.")
-    }
+  if (!canAccessBill(session.user.peran, session.user.id, bill.kasirId, managerAuthorized)) {
+    throw new Error("Hanya pemilik bill atau manager dengan otorisasi yang dapat mengelola bill ini.")
+  }
 
+  if (session.user.peran === "KASIR" && !managerAuthorized) {
     if (bill.shiftId) {
       const shift = await tx.shift.findUnique({
         where: { id: bill.shiftId },
@@ -329,8 +332,8 @@ export async function createOrGetActiveBill(sofaId: string) {
         include: { billItems: true }
       })
 
-      if (bill && session.user.peran === "KASIR" && bill.kasirId && bill.kasirId !== session.user.id) {
-        throw new Error('Meja ini sedang digunakan oleh kasir lain. Pilih meja yang masih milik Anda.')
+      if (bill) {
+        await assertBillAccessForSession(tx, bill.id, session)
       }
 
       if (!bill) {
@@ -382,9 +385,13 @@ export async function createOrGetActiveBill(sofaId: string) {
     })
   } catch (error) {
     if (!hasPrismaErrorCode(error, 'P2002')) throw error
-    const concurrentBill = await prisma.bill.findFirst({
-      where: { sofaId, status: 'TERBUKA' },
-      include: { billItems: true }
+    const concurrentBill = await prisma.$transaction(async (tx) => {
+      const bill = await tx.bill.findFirst({
+        where: { sofaId, status: 'TERBUKA' },
+        include: { billItems: true }
+      })
+      if (bill) await assertBillAccessForSession(tx, bill.id, session)
+      return bill
     })
     if (!concurrentBill) throw error
     return concurrentBill
@@ -535,36 +542,102 @@ export async function updateItemQty(itemId: string, delta: number) {
   revalidatePath('/')
 }
 
-export async function cancelLunasBill(billId: string, alasan: string, pin: string) {
+const REFUND_METHODS = ["TUNAI", "KARTU", "QRIS", "DEBIT", "TRANSFER"] as const
+type RefundMethod = (typeof REFUND_METHODS)[number]
+
+export async function getActiveRefundShifts() {
+  await requireRole(["MANAJER"])
+  return prisma.shift.findMany({
+    where: { waktuTutup: null },
+    select: { id: true, kasir: { select: { nama: true } }, waktuBuka: true },
+    orderBy: { waktuBuka: "asc" }
+  })
+}
+
+export async function cancelLunasBill(
+  billId: string,
+  shiftId: string | null,
+  metode: string,
+  referensi: string,
+  alasan: string,
+  pin: string
+) {
   const session = await requireManager(pin)
   const cleanedAlasan = normalizeAuditReason(alasan, 'Alasan pembatalan')
+  if (!REFUND_METHODS.includes(metode as RefundMethod)) throw new Error("Metode refund tidak valid.")
+  const refundMethod = metode as RefundMethod
+  const cleanedReference = refundMethod === "TUNAI" ? null : validatePaymentReference(referensi)
 
-  const bill = await prisma.bill.findUnique({ where: { id: billId } })
-  if (!bill) throw new Error('Bill not found')
-  if (bill.status !== "LUNAS") throw new Error('Bill ini tidak berstatus LUNAS')
+  await withSerializableRetry(async (tx) => {
+    const bill = await tx.bill.findUnique({
+      where: { id: billId },
+      include: { payments: true }
+    })
+    if (!bill) throw new Error('Bill tidak ditemukan.')
+    if (bill.status !== "LUNAS") throw new Error('Bill ini tidak berstatus LUNAS.')
 
-  await prisma.bill.update({
-    where: { id: billId },
-    data: { status: "BATAL" }
-  })
+    const hasPaymentRecords = bill.payments.length > 0
+    const paidTotal = hasPaymentRecords
+      ? bill.payments
+        .filter(payment => payment.status === "SUDAH_BAYAR")
+        .reduce((sum, payment) => sum + payment.jumlah, 0)
+      : bill.total
+    if (paidTotal <= 0 || paidTotal !== bill.total) {
+      throw new Error('Jumlah pembayaran terkonfirmasi tidak sama dengan total bill; refund penuh tidak dapat diproses.')
+    }
 
-  await prisma.auditLog.create({
-    data: {
-      userId: session.user.id,
-      aksi: 'KOREKSI_BATAL_BILL_LUNAS',
-      entitas: 'Bill',
-      detail: {
-        billId,
-        nomorBill: bill.nomorBill,
-        alasan: cleanedAlasan,
-        otorisasi: session.user.nama,
-        total: bill.total
+    if (refundMethod === "TUNAI" && !shiftId) {
+      throw new Error("Refund tunai harus dikaitkan ke shift kasir yang masih aktif.")
+    }
+    if (shiftId) {
+      const shift = await tx.shift.findUnique({ where: { id: shiftId } })
+      if (!shift || shift.waktuTutup) {
+        throw new Error("Shift refund tidak ditemukan atau sudah ditutup. Pilih shift aktif.")
       }
     }
+
+    const refund = await tx.refund.create({
+      data: {
+        billId,
+        shiftId,
+        operatorId: session.user.id,
+        metode: refundMethod,
+        jumlah: paidTotal,
+        alasan: cleanedAlasan,
+        referensi: cleanedReference
+      }
+    })
+
+    const updatedBill = await tx.bill.updateMany({
+      where: { id: billId, status: "LUNAS" },
+      data: { status: "BATAL" }
+    })
+    if (updatedBill.count !== 1) throw new Error("Status bill berubah saat refund diproses. Muat ulang dan coba lagi.")
+
+    await tx.auditLog.create({
+      data: {
+        userId: session.user.id,
+        aksi: 'REFUND_BATAL_BILL_LUNAS',
+        entitas: 'Refund',
+        detail: {
+          refundId: refund.id,
+          billId,
+          nomorBill: bill.nomorBill,
+          alasan: cleanedAlasan,
+          otorisasi: session.user.nama,
+          jumlah: paidTotal,
+          metode: refundMethod,
+          referensi: cleanedReference,
+          shiftId
+        }
+      }
+    })
   })
 
   revalidatePath('/riwayat')
   revalidatePath('/summary')
+  revalidatePath('/shift')
+  revalidatePath('/print/eod')
 }
 
 export async function cancelBill(billId: string, alasan: string, pin: string) {
@@ -631,20 +704,11 @@ function normalizePaymentMethod(metodeBayar?: string) {
   return raw === 'TUNAI' ? 'TUNAI' : raw
 }
 
-function normalizePaymentStatus(status?: string): "PENDING" | "SUDAH_BAYAR" | "GAGAL" | "BATAL" {
-  const raw = (status ?? 'SUDAH_BAYAR').trim().toUpperCase()
-  if (raw === 'PENDING' || raw === 'WAITING' || raw === 'MENUNGGU') return 'PENDING'
-  if (raw === 'PAID' || raw === 'SUCCESS' || raw === 'SUDAH') return 'SUDAH_BAYAR'
-  if (raw === 'FAILED' || raw === 'GAGAL') return 'GAGAL'
-  if (raw === 'CANCELLED' || raw === 'CANCELED' || raw === 'BATAL') return 'BATAL'
-  if (raw === 'SUDAH_BAYAR') return 'SUDAH_BAYAR'
-  return 'SUDAH_BAYAR'
-}
-
 function normalizeAuditReason(alasan: string, label: string) {
   const cleaned = alasan.trim()
   if (!cleaned) throw new Error(`${label} wajib diisi.`)
   if (cleaned.length < 3) throw new Error(`${label} minimal 3 karakter.`)
+  if (cleaned.length > 250) throw new Error(`${label} tidak boleh lebih dari 250 karakter.`)
   return cleaned
 }
 
@@ -662,7 +726,7 @@ async function applyBillItemCorrection(
     if (item.isComp) throw new Error("Item ini sudah di-comp.")
     if (item.diretur) throw new Error("Item ini sudah diretur.")
 
-    const bill = await assertBillAccessForSession(tx, item.billId, session)
+    const bill = await assertBillAccessForSession(tx, item.billId, session, true)
     if (bill.status !== "TERBUKA") throw new Error(`Item hanya dapat ${itemLabel} pada bill yang masih terbuka.`)
 
     const correction = aksi === "RETURN_ITEM"
@@ -697,7 +761,35 @@ type BillPaymentInput = {
   metode: "TUNAI" | "KARTU" | "QRIS" | "DEBIT" | "TRANSFER"
   jumlah: number
   referensi?: string
-  status?: "PENDING" | "SUDAH_BAYAR" | "GAGAL" | "BATAL"
+}
+
+async function resolvePaymentShift(
+  tx: Prisma.TransactionClient,
+  bill: { kasirId: string | null; shiftId: string | null },
+  session: Awaited<ReturnType<typeof requireSession>>
+) {
+  if (bill.shiftId) {
+    const shift = await tx.shift.findUnique({
+      where: { id: bill.shiftId },
+      select: { id: true, kasirId: true, waktuTutup: true }
+    })
+    if (!shift || shift.waktuTutup) {
+      throw new Error("Shift bill ini sudah ditutup atau tidak ditemukan.")
+    }
+    if (session.user.peran === "KASIR" && shift.kasirId !== session.user.id) {
+      throw new Error("Bill ini tidak terkait dengan shift aktif kasir Anda.")
+    }
+    return { shiftId: shift.id, kasirId: bill.kasirId ?? shift.kasirId }
+  }
+
+  const shift = await tx.shift.findFirst({
+    where: { kasirId: session.user.id, waktuTutup: null },
+    select: { id: true }
+  })
+  if (!shift) {
+    throw new Error("Kasir atau manajer harus memiliki shift aktif untuk mencatat pembayaran.")
+  }
+  return { shiftId: shift.id, kasirId: session.user.id }
 }
 
 async function closeBillIfFullyPaid(
@@ -709,6 +801,8 @@ async function closeBillIfFullyPaid(
     where: { id: billId },
     select: {
       id: true,
+      kasirId: true,
+      shiftId: true,
       sofaId: true,
       status: true,
       metodeBayar: true,
@@ -739,6 +833,7 @@ async function closeBillIfFullyPaid(
   }
   if (totalDibayar !== totalBill) return { closed: false, sofaId: bill.sofaId }
 
+  const paymentShift = await resolvePaymentShift(tx, bill, session)
   const metodePembayaran = [...new Set(confirmedPayments.map(payment => payment.metode))]
   const metodeBayar = metodePembayaran.length === 1
     ? metodePembayaran[0]
@@ -755,6 +850,8 @@ async function closeBillIfFullyPaid(
     data: {
       status: "LUNAS",
       waktuTutup: new Date(),
+      kasirId: paymentShift.kasirId,
+      shiftId: paymentShift.shiftId,
       metodeBayar: metodeBayar || bill.metodeBayar || "TUNAI",
       uangDiterima,
       kembalian: uangDiterima === null ? 0 : Math.max(0, uangDiterima - pembayaranTunai),
@@ -793,8 +890,8 @@ async function closeBillIfFullyPaid(
   return { closed: true, sofaId: bill.sofaId }
 }
 
-export async function confirmPayment(paymentId: string) {
-  const session = await requireRole(POS_ROLES)
+export async function confirmPayment(paymentId: string, referensi?: string) {
+  const session = await requireRole(["KASIR", "MANAJER"])
   if (!paymentId || !paymentId.trim()) throw new Error("Pembayaran tidak valid.")
 
   const result = await withSerializableRetry(async (tx) => {
@@ -814,18 +911,21 @@ export async function confirmPayment(paymentId: string) {
     }
 
     if (payment.status !== "SUDAH_BAYAR") {
-      if (payment.metode === "TUNAI") {
-        throw new Error("Pembayaran tunai langsung dianggap sah tanpa konfirmasi tambahan.")
+      if (paymentStatusForMethod(payment.metode) !== "PENDING") {
+        throw new Error("Metode pembayaran ini tidak memerlukan konfirmasi manual.")
       }
 
-      await tx.payment.update({
-        where: { id: paymentId },
+      const reference = validatePaymentReference(referensi)
+      const updated = await tx.payment.updateMany({
+        where: { id: paymentId, status: "PENDING" },
         data: {
           status: "SUDAH_BAYAR",
           confirmedAt: new Date(),
           confirmedByUserId: session.user.id,
+          referensi: reference,
         }
       })
+      if (updated.count === 0) throw new Error("Status pembayaran berubah. Muat ulang bill sebelum mencoba lagi.")
     }
 
     return closeBillIfFullyPaid(tx, payment.billId, session)
@@ -838,18 +938,13 @@ export async function confirmPayment(paymentId: string) {
   return result
 }
 
-function requiresManualConfirmation(metodeBayar?: string) {
-  const normalized = normalizePaymentMethod(metodeBayar)
-  return ['QRIS', 'DEBIT', 'TRANSFER'].includes(normalized)
-}
-
 export async function closeBill(
   billId: string,
   metodeBayar: string,
   uangDiterima?: number,
   paymentEntries?: BillPaymentInput[]
 ) {
-  const session = await requireRole(POS_ROLES)
+  const session = await requireRole(["KASIR", "MANAJER"])
   if (typeof metodeBayar !== "string") throw new Error("Metode pembayaran tidak valid.")
 
   const normalizedMethod = normalizePaymentMethod(metodeBayar)
@@ -880,34 +975,44 @@ export async function closeBill(
     }
 
     const sisaPembayaran = totalBill - totalSudahDibayar
-    const basePayments = (paymentEntries ?? (normalizedMethod === 'SPLIT'
+    const paymentShift = await resolvePaymentShift(tx, bill, session)
+    const paymentInputs: BillPaymentInput[] = paymentEntries ?? (normalizedMethod === 'SPLIT'
       ? []
       : sisaPembayaran > 0
-        ? [{ metode: normalizedMethod as BillPaymentInput["metode"], jumlah: sisaPembayaran, status: (requiresManualConfirmation(normalizedMethod) ? 'PENDING' : 'SUDAH_BAYAR') as BillPaymentInput['status'] }]
-        : []))
-      .map(payment => ({
+        ? [{ metode: normalizedMethod as BillPaymentInput["metode"], jumlah: sisaPembayaran }]
+        : [])
+    const basePayments = paymentInputs.map(payment => ({
         ...payment,
-        status: payment.status ? normalizePaymentStatus(payment.status) : (requiresManualConfirmation(payment.metode) ? 'PENDING' : 'SUDAH_BAYAR')
+        status: paymentStatusForMethod(payment.metode)
       }))
 
     if (basePayments.some(payment =>
       !['TUNAI', 'KARTU', 'QRIS', 'DEBIT', 'TRANSFER'].includes(payment.metode) ||
       !Number.isSafeInteger(payment.jumlah) ||
       payment.jumlah <= 0 ||
-      (payment.status !== undefined && !['PENDING', 'SUDAH_BAYAR'].includes(payment.status)) ||
-      (payment.referensi !== undefined && payment.referensi.trim().length > 120)
+      (payment.referensi !== undefined &&
+        (typeof payment.referensi !== 'string' || payment.referensi.trim().length > 120))
     )) {
-      throw new Error('Rincian pembayaran tidak valid. QRIS/debit/transfer harus sudah dikonfirmasi sebagai SUDAH_BAYAR atau menunggu konfirmasi manual.')
+      throw new Error('Rincian pembayaran tidak valid.')
     }
 
     if (pendingExistingPayments.length > 0 && basePayments.length > 0) {
       throw new Error('Masih ada pembayaran yang menunggu konfirmasi. Konfirmasi atau batalkan pembayaran tersebut sebelum membuat pembayaran baru.')
     }
 
+    if (basePayments.length > 0 && basePayments.reduce((sum, payment) => sum + payment.jumlah, 0) !== sisaPembayaran) {
+      throw new Error('Jumlah alokasi pembayaran harus sama dengan sisa tagihan.')
+    }
+
     const confirmedPayments = basePayments.filter(payment => payment.status === 'SUDAH_BAYAR')
     const pendingPayments = [...pendingExistingPayments, ...basePayments.filter(payment => payment.status === 'PENDING')]
     if (pendingPayments.length > 0) {
       if (basePayments.length > 0) {
+        const billUpdate = await tx.bill.updateMany({
+          where: { id: billId, status: "TERBUKA" },
+          data: { kasirId: paymentShift.kasirId, shiftId: paymentShift.shiftId }
+        })
+        if (billUpdate.count === 0) throw new Error("Bill berubah bersamaan. Muat ulang sebelum mencoba lagi.")
         await tx.payment.createMany({
           data: basePayments.map(payment => ({
             billId,
@@ -945,20 +1050,14 @@ export async function closeBill(
         ? `SPLIT (${uniquePaymentMethods.join('+')})`
         : normalizedMethod
     const kembalian = nominalDiterima - pembayaranTunai
-    const activeShift = !bill.shiftId && session.user.peran === "KASIR"
-      ? await tx.shift.findFirst({ where: { kasirId: session.user.id, waktuTutup: null } })
-      : null
-    if (!bill.shiftId && session.user.peran === "KASIR" && !activeShift) {
-      throw new Error("Kasir harus memiliki shift aktif untuk menutup bill.")
-    }
-
     const update = await tx.bill.updateMany({
       where: { id: billId, status: "TERBUKA" },
       data: {
         status: "LUNAS",
         waktuTutup: new Date(),
         metodeBayar: metodeTersimpan,
-        shiftId: bill.shiftId ?? activeShift?.id,
+        kasirId: paymentShift.kasirId,
+        shiftId: paymentShift.shiftId,
         uangDiterima: pembayaranTunai > 0 ? nominalDiterima : null,
         kembalian
       }
@@ -1208,12 +1307,19 @@ export async function deleteSofa(id: string) {
   revalidatePath('/')
 }
 
-export async function applyDiscount(billId: string, diskon: number) {
+export async function applyDiscount(billId: string, diskon: number, alasan: string, pin: string) {
   const session = await requireRole(POS_ROLES)
-  if (!Number.isInteger(diskon) || diskon < 0) throw new Error('Diskon harus berupa nominal rupiah bulat dan tidak negatif.')
+  const managerId = await verifyManagerPin(pin)
+  const manager = await prisma.user.findUnique({
+    where: { id: managerId },
+    select: { nama: true }
+  })
+  if (!manager) throw new Error("Akun manajer pemberi otorisasi tidak ditemukan.")
+  if (!Number.isSafeInteger(diskon) || diskon < 0) throw new Error('Diskon harus berupa nominal rupiah bulat dan tidak negatif.')
+  const cleanedAlasan = normalizeAuditReason(alasan, 'Alasan diskon')
 
   await withSerializableRetry(async (tx) => {
-    const bill = await assertBillAccessForSession(tx, billId, session)
+    const bill = await assertBillAccessForSession(tx, billId, session, true)
     if (bill.status !== "TERBUKA") throw new Error('Diskon hanya dapat diubah pada bill yang masih terbuka.')
 
     const billWithItems = await tx.bill.findUnique({ where: { id: billId }, include: { billItems: true } })
@@ -1248,7 +1354,14 @@ export async function applyDiscount(billId: string, diskon: number) {
         userId: session.user.id,
         aksi: 'APPLY_DISCOUNT',
         entitas: 'Bill',
-        detail: { billId, diskon, subtotal: totals.subtotal, otorisasi: session.user.nama }
+        detail: {
+          billId,
+          diskon,
+          subtotal: totals.subtotal,
+          alasan: cleanedAlasan,
+          dilakukanOleh: session.user.nama,
+          otorisasi: manager.nama,
+        }
       }
     })
   })
@@ -1298,16 +1411,20 @@ export async function pindahSofa(billId: string, sofaBaruId: string) {
 }
 
 export async function setSofaStatus(sofaId: string, status: "KOSONG" | "TERISI" | "MENUNGGU_MAKANAN" | "SIAP_BAYAR") {
-  await requireRole(POS_ROLES)
+  const session = await requireRole(POS_ROLES)
   if (!["KOSONG", "TERISI", "MENUNGGU_MAKANAN", "SIAP_BAYAR"].includes(status)) {
     throw new Error("Status meja tidak valid.")
   }
   await withSerializableRetry(async (tx) => {
     const sofa = await tx.sofa.findUnique({ where: { id: sofaId } })
     if (!sofa || sofa.isDeleted) throw new Error("Meja tidak ditemukan atau tidak aktif.")
-    if (status === "KOSONG") {
-      const openBill = await tx.bill.findFirst({ where: { sofaId, status: "TERBUKA" } })
-      if (openBill) throw new Error("Meja masih memiliki bill terbuka.")
+    const openBill = await tx.bill.findFirst({
+      where: { sofaId, status: "TERBUKA" },
+      select: { id: true }
+    })
+    if (openBill) {
+      await assertBillAccessForSession(tx, openBill.id, session)
+      if (status === "KOSONG") throw new Error("Meja masih memiliki bill terbuka.")
     }
     await tx.sofa.update({ where: { id: sofaId }, data: { status } })
   })
@@ -1371,10 +1488,14 @@ export async function closeShift(shiftId: string, kasHitung: number, pin?: strin
     }
 
     const bills = await tx.bill.findMany({
-      where: { status: 'LUNAS', shiftId, waktuTutup: { gte: shift.waktuBuka } },
+      where: { status: { in: ['LUNAS', 'BATAL'] }, shiftId, waktuTutup: { gte: shift.waktuBuka } },
       include: { payments: true }
     })
-    const cash = computeShiftCash(shift.kasAwal, shift.pengeluaran, bills, kasHitung)
+    const refunds = await tx.refund.findMany({
+      where: { shiftId },
+      select: { metode: true, jumlah: true }
+    })
+    const cash = computeShiftCash(shift.kasAwal, shift.pengeluaran, bills, kasHitung, refunds)
     const { totalPenjualan, penjualanTunai: kasTunai, expectedCash, selisih } = cash
     const update = await tx.shift.updateMany({
       where: { id: shiftId, waktuTutup: null },
@@ -1527,7 +1648,7 @@ export async function applyReservationDeposit(
   reservasiId: string,
   legacyDepositMetode?: BillPaymentInput["metode"]
 ) {
-  const session = await requireRole(POS_ROLES)
+  const session = await requireRole(["KASIR", "MANAJER"])
   await withSerializableRetry(async (tx) => {
     const bill = await assertBillAccessForSession(tx, billId, session)
     if (bill.status !== 'TERBUKA') throw new Error('Deposit hanya dapat diterapkan ke bill yang masih terbuka.')
@@ -1547,6 +1668,7 @@ export async function applyReservationDeposit(
     if (!metode || !['TUNAI', 'KARTU', 'QRIS', 'DEBIT', 'TRANSFER'].includes(metode)) {
       throw new Error('Pilih metode pembayaran untuk deposit reservasi lama.')
     }
+    const paymentShift = await resolvePaymentShift(tx, bill, session)
 
     const calculatedTotals = await calculateBillTotalInTransaction(tx, billId)
     const existingPayments = await tx.payment.aggregate({
@@ -1556,6 +1678,12 @@ export async function applyReservationDeposit(
     if (reservation.deposit > calculatedTotals.total - (existingPayments._sum.jumlah ?? 0)) {
       throw new Error('Deposit melebihi sisa tagihan bill.')
     }
+
+    const billUpdate = await tx.bill.updateMany({
+      where: { id: billId, status: "TERBUKA" },
+      data: { kasirId: paymentShift.kasirId, shiftId: paymentShift.shiftId }
+    })
+    if (billUpdate.count === 0) throw new Error("Bill berubah bersamaan. Muat ulang sebelum mencoba lagi.")
 
     const linked = await tx.reservasi.updateMany({
       where: { id: reservasiId, status: 'CONFIRMED', billId: null },
@@ -1568,7 +1696,12 @@ export async function applyReservationDeposit(
         billId,
         metode,
         jumlah: reservation.deposit,
-        referensi: `Deposit reservasi: ${reservation.nama}`
+        referensi: paymentStatusForMethod(metode) === "PENDING"
+          ? null
+          : `Deposit reservasi: ${reservation.nama}`,
+        status: paymentStatusForMethod(metode),
+        confirmedAt: paymentStatusForMethod(metode) === "SUDAH_BAYAR" ? new Date() : null,
+        confirmedByUserId: paymentStatusForMethod(metode) === "SUDAH_BAYAR" ? session.user.id : null,
       }
     })
     await tx.auditLog.create({

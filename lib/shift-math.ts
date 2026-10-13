@@ -1,7 +1,13 @@
 export type BillPaymentSummary = {
   total: number
   metodeBayar: string | null
+  status?: string
   payments?: { metode: string; jumlah: number; status?: string }[]
+}
+
+export type ShiftRefundSummary = {
+  metode: string
+  jumlah: number
 }
 
 function normalizeCashMethod(method?: string | null) {
@@ -25,18 +31,34 @@ export function cashSalesForBill(bill: BillPaymentSummary): number {
   return method === "TUNAI" ? bill.total : 0
 }
 
+function paidSalesForBill(bill: BillPaymentSummary): number {
+  if (bill.payments && bill.payments.length > 0) {
+    return bill.payments
+      .filter(payment => payment.status === undefined || payment.status === "SUDAH_BAYAR")
+      .reduce((sum, payment) => sum + payment.jumlah, 0)
+  }
+
+  return bill.status === "BATAL" ? 0 : bill.total
+}
+
 export function computeShiftCash(
   kasAwal: number,
   pengeluaran: number,
   bills: BillPaymentSummary[],
-  kasHitung?: number | null
+  kasHitung?: number | null,
+  refunds: ShiftRefundSummary[] = []
 ) {
-  const totalPenjualan = bills.reduce((sum, bill) => sum + bill.total, 0)
+  const totalRefund = refunds.reduce((sum, refund) => sum + refund.jumlah, 0)
+  const cashRefund = refunds
+    .filter(refund => normalizeCashMethod(refund.metode) === "TUNAI")
+    .reduce((sum, refund) => sum + refund.jumlah, 0)
+  const totalPenjualan = bills.reduce((sum, bill) => sum + paidSalesForBill(bill), 0) - totalRefund
   const penjualanTunai = bills.reduce((sum, bill) => sum + cashSalesForBill(bill), 0)
-  const expectedCash = kasAwal + penjualanTunai - pengeluaran
+  const expectedCash = kasAwal + penjualanTunai - cashRefund - pengeluaran
   return {
     totalPenjualan,
     penjualanTunai,
+    cashRefund,
     expectedCash,
     selisih: kasHitung == null ? null : kasHitung - expectedCash,
   }
@@ -47,15 +69,18 @@ export type ShiftCashSummaryInput = {
   pengeluaran: number
   kasHitung: number | null
   bills: BillPaymentSummary[]
+  refunds?: ShiftRefundSummary[]
 }
 
 export function summarizeShiftCash(shifts: ShiftCashSummaryInput[]) {
   const cashSales = shifts.reduce(
-    (sum, shift) => sum + shift.bills.reduce((billSum, bill) => billSum + cashSalesForBill(bill), 0),
+    (sum, shift) => sum + shift.bills.reduce((billSum, bill) => billSum + cashSalesForBill(bill), 0) -
+      (shift.refunds ?? []).filter(refund => normalizeCashMethod(refund.metode) === "TUNAI")
+        .reduce((refundSum, refund) => refundSum + refund.jumlah, 0),
     0
   )
   const expectedCash = shifts.reduce(
-    (sum, shift) => sum + computeShiftCash(shift.kasAwal, shift.pengeluaran, shift.bills).expectedCash,
+    (sum, shift) => sum + computeShiftCash(shift.kasAwal, shift.pengeluaran, shift.bills, undefined, shift.refunds).expectedCash,
     0
   )
   const actualClosingCash = shifts.reduce((sum, shift) => sum + (shift.kasHitung ?? 0), 0)

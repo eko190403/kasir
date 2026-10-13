@@ -22,12 +22,11 @@ export default async function DineInPage() {
 
     let bgColor = "bg-zinc-800/80 border-zinc-700"
     let statusText = "KOSONG"
-    let pulseClass = ""
     switch(sofa.status) {
       case "KOSONG": bgColor = "bg-zinc-800/80 border-zinc-700 hover:border-zinc-500"; statusText = "KOSONG"; break;
-      case "TERISI": bgColor = "bg-blue-950/80 border-blue-500 hover:border-blue-400"; statusText = "TERISI"; pulseClass = "shadow-blue-500/20 shadow-lg"; break;
-      case "MENUNGGU_MAKANAN": bgColor = "bg-amber-950/80 border-amber-500 hover:border-amber-400"; statusText = "MENUNGGU"; pulseClass = "shadow-amber-500/20 shadow-lg animate-pulse"; break;
-      case "SIAP_BAYAR": bgColor = "bg-emerald-950/80 border-emerald-500 hover:border-emerald-400"; statusText = "SIAP BAYAR"; pulseClass = "shadow-emerald-500/20 shadow-lg"; break;
+      case "TERISI": bgColor = "bg-blue-950/50 border-blue-800 hover:border-blue-600"; statusText = "TERISI"; break;
+      case "MENUNGGU_MAKANAN": bgColor = "bg-amber-950/50 border-amber-700 hover:border-amber-500"; statusText = "MENUNGGU"; break;
+      case "SIAP_BAYAR": bgColor = "bg-emerald-950/50 border-emerald-800 hover:border-emerald-600"; statusText = "SIAP BAYAR"; break;
     }
 
     // Size badge based on type
@@ -43,14 +42,14 @@ export default async function DineInPage() {
       <Link
         href={`/sofa/${sofa.id}`}
         prefetch={false}
-        className={`relative flex flex-col items-center justify-center rounded-xl border-2 transition-all duration-300 cursor-pointer group ${bgColor} ${pulseClass} ${className}`}
+        className={`relative flex flex-col items-center justify-center rounded-lg border transition-colors duration-150 cursor-pointer group ${bgColor} ${className}`}
       >
         {typeLabel && (
           <span className={`absolute -top-1.5 -right-1.5 text-[9px] font-black px-1.5 py-0.5 rounded-full ${typeBg} text-white`}>
             {typeLabel}
           </span>
         )}
-        <span className="text-lg font-black text-white group-hover:scale-110 transition-transform">{sofa.nama}</span>
+        <span className="text-lg font-semibold text-white">{sofa.nama}</span>
         <span className="text-[10px] text-zinc-400 mt-0.5">{sofa.kapasitas} pax</span>
         <span className={`text-[9px] font-bold mt-1 px-2 py-0.5 rounded-full ${
           sofa.status === 'KOSONG' ? 'bg-zinc-700 text-zinc-400' :
@@ -68,13 +67,13 @@ export default async function DineInPage() {
     <main className="container mx-auto p-4 space-y-6 max-w-5xl">
       <header className="flex justify-between items-center pb-4 border-b border-zinc-800">
         <div>
-          <h1 className="text-2xl font-black bg-gradient-to-r from-amber-300 to-amber-500 bg-clip-text text-transparent">Floor Map</h1>
-          <p className="text-xs text-zinc-500 mt-1">Tap meja untuk buka bill / lihat order</p>
+          <h1 className="text-2xl font-semibold text-white">Pilih meja</h1>
+          <p className="mt-1 text-sm text-zinc-500">Pilih meja untuk membuka atau melanjutkan pesanan.</p>
         </div>
         <form action={createTakeAwayOrder}>
-          <button type="submit" className="px-4 py-2 bg-amber-600 hover:bg-amber-500 rounded-lg text-sm font-medium transition cursor-pointer flex items-center gap-2">
+          <button type="submit" className="flex cursor-pointer items-center gap-2 rounded-md border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm font-medium text-zinc-200 transition-colors hover:bg-zinc-700">
             <ShoppingBag className="w-4 h-4" />
-            New Take Away
+            Pesanan bawa pulang
           </button>
         </form>
       </header>
@@ -94,16 +93,16 @@ export default async function DineInPage() {
 
       {/* ==================== 1ST FLOOR ==================== */}
       <section>
-        <h2 className="text-sm font-bold text-zinc-400 uppercase tracking-widest mb-3 flex items-center gap-2">
-          <span className="w-2 h-2 rounded-full bg-red-500" /> 1st Floor
+        <h2 className="mb-3 flex items-center gap-2 text-sm font-semibold text-zinc-300">
+          <span className="h-1.5 w-1.5 rounded-full bg-amber-500" /> Lantai 1
         </h2>
 
         <div className="relative bg-zinc-900/60 border border-zinc-800 rounded-2xl p-4 space-y-4">
 
           {/* Bar Area Label */}
           <div className="flex justify-center">
-            <div className="bg-zinc-800 border border-zinc-700 rounded-xl px-8 py-2 text-xs font-bold text-zinc-400 uppercase tracking-widest">
-              ☕ Bar Area
+            <div className="rounded-md border border-zinc-700 bg-zinc-800 px-6 py-2 text-xs font-medium text-zinc-400">
+              Area bar
             </div>
           </div>
 
@@ -152,8 +151,8 @@ export default async function DineInPage() {
           <div className="grid grid-cols-6 gap-3">
             <SofaCard name="L2" className="h-20" />
             <div className="col-span-4 flex items-center justify-center">
-              <div className="bg-gradient-to-br from-purple-900/40 to-pink-900/40 border border-purple-800/50 rounded-xl px-6 py-3 text-xs font-bold text-purple-300 uppercase tracking-widest text-center w-full">
-                🎵 Dance Floor
+              <div className="w-full rounded-lg border border-zinc-700 bg-zinc-800/70 px-6 py-3 text-center text-xs font-medium text-zinc-300">
+                Area musik
               </div>
             </div>
             <SofaCard name="L5" className="h-20" />
@@ -175,22 +174,22 @@ export default async function DineInPage() {
 
           {/* Entrance Label */}
           <div className="flex justify-center">
-            <div className="text-[10px] font-bold text-zinc-600 uppercase tracking-[0.3em]">↓ Entrance ↓</div>
+            <div className="text-[10px] font-medium text-zinc-500">Pintu masuk</div>
           </div>
         </div>
       </section>
 
-      {/* ==================== 2ND FLOOR ==================== */}
+      {/* Lantai 2 */}
       <section>
-        <h2 className="text-sm font-bold text-zinc-400 uppercase tracking-widest mb-3 flex items-center gap-2">
-          <span className="w-2 h-2 rounded-full bg-red-500" /> 2nd Floor
+        <h2 className="mb-3 flex items-center gap-2 text-sm font-semibold text-zinc-300">
+          <span className="h-1.5 w-1.5 rounded-full bg-amber-500" /> Lantai 2
         </h2>
 
         <div className="relative bg-zinc-900/60 border border-zinc-800 rounded-2xl p-4 space-y-4">
 
-          {/* Entrance label */}
+          {/* Akses masuk */}
           <div className="flex justify-center">
-            <div className="text-[10px] font-bold text-zinc-600 uppercase tracking-[0.3em]">↑ Entrance ↑</div>
+            <div className="text-[10px] font-medium text-zinc-500">Pintu masuk</div>
           </div>
 
           {/* Row 1: S10 (left) | | S5 (right) */}
@@ -228,7 +227,7 @@ export default async function DineInPage() {
           <div className="grid grid-cols-5 gap-3">
             <div className="col-span-4 flex items-center justify-center">
               <div className="bg-zinc-800/60 border border-zinc-700 rounded-lg px-6 py-2 text-[10px] font-bold text-zinc-500 uppercase tracking-widest">
-                Staff Only Area
+                Area staf
               </div>
             </div>
             <SofaCard name="S9" className="h-20" />

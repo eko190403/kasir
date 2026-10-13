@@ -3,6 +3,7 @@ import { createOrGetActiveBill } from "@/app/actions"
 import BillClient from "@/components/BillClient"
 import PindahSofaButton from "@/components/PindahSofaButton"
 import SofaStatusToggle from "@/components/SofaStatusToggle"
+import { getSession } from "@/lib/auth"
 import Link from "next/link"
 import { redirect } from "next/navigation"
 
@@ -47,6 +48,8 @@ export default async function SofaPage({ params }: { params: Promise<{ id: strin
   })
   if (!bill) throw new Error('Bill aktif tidak ditemukan.')
 
+  const session = await getSession()
+  const canOperatePayments = session?.user.peran === "KASIR" || session?.user.peran === "MANAJER"
   const menuItems = await prisma.menuItem.findMany({
     where: { isDeleted: false },
     orderBy: { kategori: 'asc' }
@@ -86,6 +89,7 @@ export default async function SofaPage({ params }: { params: Promise<{ id: strin
       <BillClient
         key={bill.updatedAt.toISOString()}
         billId={bill.id} 
+        canOperatePayments={canOperatePayments}
         menuItems={menuItems}
         initialBillItems={bill.billItems}
         initialPayments={bill.payments}

@@ -5,13 +5,17 @@ import { openShift, closeShift, catatPengeluaran } from "@/app/actions"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
 import type { Payment, Shift, User } from "@prisma/client"
+import { Clock3, Plus, Wallet } from "lucide-react"
+
+const fieldClass = "mt-1 h-10 w-full rounded-md border border-zinc-700 bg-zinc-950 px-3 text-sm text-white placeholder:text-zinc-600 focus:border-amber-500 focus:outline-none"
 
 type ShiftBill = {
   total: number
   metodeBayar: string | null
   payments: Pick<Payment, "metode" | "jumlah" | "status">[]
 }
-type ShiftWithCashier = Shift & { kasir: User | null; bills: ShiftBill[] }
+type ShiftRefund = { metode: Payment["metode"]; jumlah: number }
+type ShiftWithCashier = Shift & { kasir: User | null; bills: ShiftBill[]; refunds: ShiftRefund[] }
 type ShiftPaymentSummary = Record<"TUNAI" | "KARTU" | "QRIS" | "DEBIT" | "TRANSFER", number> & {
   legacySplitUnallocated: number
 }
@@ -161,118 +165,161 @@ export default function ShiftClient({ shifts, users, currentRole, currentUserId 
   }
 
   return (
-    <div className="space-y-6">
-      {/* Open Shift Form */}
-      {!showForm ? (
-        <button onClick={() => setShowForm(true)} className="px-4 py-2 bg-amber-600 hover:bg-amber-500 rounded-lg text-sm font-medium transition">
-          + Buka Shift Baru
-        </button>
-      ) : (
-        <div className="bg-zinc-900 border border-zinc-800 p-5 rounded-xl space-y-4 max-w-md">
-          <h2 className="font-bold text-lg">Buka Shift</h2>
-          {currentRole === "MANAJER" && <div>
-            <label className="text-xs text-zinc-400">Kasir</label>
-            <select value={kasirId} onChange={e => setKasirId(e.target.value)}
-              className="w-full bg-zinc-800 border border-zinc-700 rounded-lg p-2 text-sm mt-1 focus:outline-none focus:border-emerald-500">
-              <option value="">Pilih Kasir</option>
-              {users.filter(u => u.peran === 'KASIR').map(u => <option key={u.id} value={u.id}>{u.nama}</option>)}
-            </select>
-          </div>}
-          <div>
-            <label className="text-xs text-zinc-400">Kas Awal (Rp)</label>
-            <input type="number" min="0" value={kasAwal} onChange={e => setKasAwal(parseInt(e.target.value) || 0)}
-              className="w-full bg-zinc-800 border border-zinc-700 rounded-lg p-2 text-sm mt-1 focus:outline-none focus:border-emerald-500" />
-          </div>
-          <div className="flex gap-2 pt-2">
-            <button onClick={() => setShowForm(false)} className="px-4 py-2 bg-zinc-700 rounded-lg text-sm">Batal</button>
-            <button onClick={handleOpen} disabled={loading} className="flex-1 bg-amber-600 hover:bg-amber-500 py-2 rounded-lg text-sm font-bold">Buka Shift</button>
-          </div>
+    <div className="space-y-5">
+      <section className="flex flex-col gap-3 rounded-lg border border-zinc-800 bg-zinc-900 p-4 sm:flex-row sm:items-center sm:justify-between sm:p-5">
+        <div>
+          <h2 className="text-base font-semibold text-zinc-100">Operasional shift</h2>
+          <p className="mt-1 text-sm text-zinc-500">{activeShifts.length} shift aktif · {closedShifts.length} shift ditutup</p>
         </div>
+        <button onClick={() => setShowForm(current => !current)} className="inline-flex h-10 items-center justify-center gap-2 rounded-md bg-amber-600 px-4 text-sm font-medium text-white transition-colors hover:bg-amber-500">
+          <Plus className="h-4 w-4" /> {showForm ? "Tutup formulir" : "Buka shift"}
+        </button>
+      </section>
+
+      {showForm && (
+        <section className="rounded-lg border border-zinc-800 bg-zinc-900 p-4 sm:p-5">
+          <div className="mb-4 border-b border-zinc-800 pb-3">
+            <h2 className="text-base font-semibold text-zinc-100">Shift baru</h2>
+            <p className="mt-1 text-sm text-zinc-500">Tentukan kasir dan jumlah kas awal di laci.</p>
+          </div>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            {currentRole === "MANAJER" && (
+              <label className="text-xs text-zinc-400">
+                Kasir
+                <select value={kasirId} onChange={e => setKasirId(e.target.value)} className={fieldClass}>
+                  <option value="">Pilih kasir</option>
+                  {users.filter(user => user.peran === "KASIR").map(user => <option key={user.id} value={user.id}>{user.nama}</option>)}
+                </select>
+              </label>
+            )}
+            <label className="text-xs text-zinc-400">
+              Kas awal (Rp)
+              <input type="number" min="0" value={kasAwal} onChange={e => setKasAwal(parseInt(e.target.value) || 0)} className={fieldClass} />
+            </label>
+          </div>
+          <div className="mt-5 flex justify-end gap-2 border-t border-zinc-800 pt-4">
+            <button onClick={() => setShowForm(false)} className="h-10 rounded-md border border-zinc-700 px-4 text-sm font-medium text-zinc-300 transition-colors hover:bg-zinc-800">Batal</button>
+            <button onClick={handleOpen} disabled={loading} className="h-10 rounded-md bg-amber-600 px-4 text-sm font-medium text-white transition-colors hover:bg-amber-500 disabled:opacity-50">{loading ? "Membuka..." : "Buka shift"}</button>
+          </div>
+        </section>
       )}
 
       {/* Active Shifts */}
       {activeShifts.length > 0 && (
         <div>
-          <h2 className="font-bold text-lg mb-3 text-emerald-400">Shift Aktif</h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="mb-3 flex items-center justify-between">
+            <h2 className="text-base font-semibold text-zinc-100">Shift aktif</h2>
+            <span className="text-xs tabular-nums text-zinc-500">{activeShifts.length} berjalan</span>
+          </div>
+          <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
             {activeShifts.map(s => (
-              <div key={s.id} className="bg-zinc-900 border border-emerald-800 p-5 rounded-xl space-y-3">
-                <div className="flex justify-between items-start">
-                  <div>
-                    <h3 className="font-bold text-lg">{s.kasir?.nama}</h3>
-                    <p className="text-xs text-zinc-400">Buka: {new Date(s.waktuBuka).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}</p>
+              <article key={s.id} className="rounded-lg border border-zinc-800 bg-zinc-900 p-4 sm:p-5">
+                <div className="flex items-start justify-between gap-3 border-b border-zinc-800 pb-3">
+                  <div className="min-w-0">
+                    <h3 className="truncate text-base font-semibold text-zinc-100">{s.kasir?.nama}</h3>
+                    <p className="mt-1 inline-flex items-center gap-1.5 text-xs text-zinc-500">
+                      <Clock3 className="h-3.5 w-3.5" />
+                      Dibuka {new Date(s.waktuBuka).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" })}
+                    </p>
                   </div>
-                  <span className="px-2 py-1 text-xs font-bold rounded-md bg-emerald-600">AKTIF</span>
+                  <span className="shrink-0 rounded border border-emerald-900 bg-emerald-950/30 px-2 py-1 text-xs font-medium text-emerald-300">Aktif</span>
                 </div>
-                <div className="text-sm text-zinc-300 space-y-1">
-                  <div>Kas Awal: <span className="font-bold">Rp {s.kasAwal.toLocaleString('id-ID')}</span></div>
-                  <div className="text-red-400">Kas Keluar: <span>Rp {s.pengeluaran.toLocaleString('id-ID')}</span></div>
+                <div className="grid grid-cols-2 gap-3 py-4">
+                  <div>
+                    <p className="text-xs text-zinc-500">Kas awal</p>
+                    <p className="mt-1 text-sm font-medium tabular-nums text-zinc-200">Rp {s.kasAwal.toLocaleString("id-ID")}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-zinc-500">Kas keluar</p>
+                    <p className="mt-1 text-sm font-medium tabular-nums text-zinc-200">Rp {s.pengeluaran.toLocaleString("id-ID")}</p>
+                  </div>
                 </div>
-                <div className="flex gap-2">
+                <div className="flex flex-col gap-2 border-t border-zinc-800 pt-3 sm:flex-row">
                   <button onClick={() => { setPettyCashId(s.id); setShiftPin('') }} disabled={loading}
-                    className="flex-1 bg-amber-600 hover:bg-amber-500 py-2 rounded-lg text-xs font-bold transition">
-                    + Kas Keluar
+                    className="inline-flex h-9 flex-1 items-center justify-center gap-2 rounded-md border border-zinc-700 px-3 text-sm font-medium text-zinc-300 transition-colors hover:bg-zinc-800 disabled:opacity-50">
+                    <Wallet className="h-4 w-4" /> Catat kas keluar
                   </button>
                   <button onClick={() => handleClose(s.id)} disabled={loading}
-                    className="flex-1 bg-red-600 hover:bg-red-500 py-2 rounded-lg text-xs font-bold transition">
-                    Tutup Shift
+                    className="h-9 flex-1 rounded-md bg-amber-600 px-3 text-sm font-medium text-white transition-colors hover:bg-amber-500 disabled:opacity-50">
+                    Tutup shift
                   </button>
                 </div>
-              </div>
+              </article>
             ))}
           </div>
 
-          {pettyCashId && (
-            <div className="fixed inset-0 bg-black/80 flex items-center justify-center p-4 z-50">
-              <div className="bg-zinc-900 border border-zinc-700 p-5 rounded-xl space-y-4 w-full max-w-sm">
-                <h3 className="font-bold">Catat Kas Keluar (Petty Cash)</h3>
-                <div>
-                  <label className="text-xs text-zinc-400">Jumlah (Rp)</label>
-                  <input type="number" min="0" value={pettyJumlah} onChange={e => setPettyJumlah(parseInt(e.target.value) || 0)}
-                    className="w-full bg-zinc-800 border border-zinc-700 rounded-lg p-2 text-sm mt-1 focus:outline-none focus:border-emerald-500" />
-                </div>
-                <div>
-                  <label className="text-xs text-zinc-400">Catatan / Keperluan</label>
-                  <input type="text" value={pettyCatatan} onChange={e => setPettyCatatan(e.target.value)}
-                    className="w-full bg-zinc-800 border border-zinc-700 rounded-lg p-2 text-sm mt-1 focus:outline-none focus:border-emerald-500" />
-                </div>
-                <div>
-                  <label className="text-xs text-zinc-400">PIN Manager (opsional untuk kasir)</label>
-                  <input type="password" inputMode="numeric" value={shiftPin} onChange={e => setShiftPin(e.target.value)}
-                    className="w-full bg-zinc-800 border border-zinc-700 rounded-lg p-2 text-sm mt-1 focus:outline-none focus:border-emerald-500" />
-                </div>
-                <div className="flex gap-2 pt-2">
-                  <button onClick={() => { setPettyCashId(null); setShiftPin('') }} className="px-4 py-2 bg-zinc-700 rounded-lg text-sm">Batal</button>
-                  <button onClick={handlePettyCash} disabled={loading} className="flex-1 bg-amber-600 hover:bg-amber-500 py-2 rounded-lg text-sm font-bold">Simpan</button>
-                </div>
-              </div>
+        </div>
+      )}
+
+      {pettyCashId && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
+          <section role="dialog" aria-modal="true" aria-labelledby="petty-cash-title" className="w-full max-w-md space-y-4 rounded-lg border border-zinc-700 bg-zinc-900 p-5 shadow-xl">
+            <div className="border-b border-zinc-800 pb-3">
+              <h3 id="petty-cash-title" className="text-base font-semibold text-zinc-100">Catat kas keluar</h3>
+              <p className="mt-1 text-sm text-zinc-500">Catatan ini akan masuk ke rekap shift.</p>
             </div>
-          )}
+            <label className="block text-xs text-zinc-400">
+              Jumlah (Rp)
+              <input type="number" min="0" value={pettyJumlah} onChange={e => setPettyJumlah(parseInt(e.target.value) || 0)} className={fieldClass} />
+            </label>
+            <label className="block text-xs text-zinc-400">
+              Catatan / keperluan
+              <input type="text" value={pettyCatatan} onChange={e => setPettyCatatan(e.target.value)} className={fieldClass} />
+            </label>
+            <label className="block text-xs text-zinc-400">
+              PIN manager (opsional untuk kasir)
+              <input type="password" inputMode="numeric" value={shiftPin} onChange={e => setShiftPin(e.target.value)} className={fieldClass} />
+            </label>
+            <div className="flex justify-end gap-2 border-t border-zinc-800 pt-4">
+              <button onClick={() => { setPettyCashId(null); setShiftPin("") }} className="h-10 rounded-md border border-zinc-700 px-4 text-sm font-medium text-zinc-300 hover:bg-zinc-800">Batal</button>
+              <button onClick={handlePettyCash} disabled={loading} className="h-10 rounded-md bg-amber-600 px-4 text-sm font-medium text-white hover:bg-amber-500 disabled:opacity-50">{loading ? "Menyimpan..." : "Simpan"}</button>
+            </div>
+          </section>
         </div>
       )}
 
       {pendingCloseId && (
-        <div className="fixed inset-0 bg-black/80 flex items-center justify-center p-4 z-50">
-          <div className="bg-zinc-900 border border-zinc-700 p-5 rounded-xl space-y-4 w-full max-w-sm">
-            <h3 className="font-bold text-lg">Konfirmasi Tutup Shift</h3>
-            <p className="text-sm text-zinc-300">Tutup shift memerlukan otorisasi manager. Masukkan PIN manager untuk melanjutkan.</p>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
+          <section role="dialog" aria-modal="true" aria-labelledby="close-shift-title" className="max-h-[90vh] w-full max-w-lg space-y-4 overflow-y-auto rounded-lg border border-zinc-700 bg-zinc-900 p-5 shadow-xl">
+            <div className="border-b border-zinc-800 pb-3">
+              <h3 id="close-shift-title" className="text-base font-semibold text-zinc-100">Tutup shift</h3>
+              <p className="mt-1 text-sm text-zinc-500">Periksa ringkasan pembayaran dan masukkan kas fisik untuk melanjutkan.</p>
+            </div>
             {(() => {
               const shift = activeShifts.find(item => item.id === pendingCloseId)
               if (!shift) return null
               const paymentSummary = getShiftPaymentSummary(shift.bills)
-              const cashExpected = shift.kasAwal + paymentSummary.TUNAI - shift.pengeluaran
+              const cashRefund = shift.refunds
+                .filter(refund => refund.metode === "TUNAI")
+                .reduce((sum, refund) => sum + refund.jumlah, 0)
+              const nonCashRefund = shift.refunds
+                .filter(refund => refund.metode !== "TUNAI")
+                .reduce((sum, refund) => sum + refund.jumlah, 0)
+              const cashExpected = shift.kasAwal + paymentSummary.TUNAI - cashRefund - shift.pengeluaran
               const nonCashMethods = ["KARTU", "QRIS", "DEBIT", "TRANSFER"] as const
               const nonCashTotal = nonCashMethods.reduce((sum, method) => sum + paymentSummary[method], 0)
 
               return (
-                <div className="space-y-2 rounded-lg border border-zinc-700 bg-zinc-950 p-3 text-sm">
-                  <div className="flex justify-between font-semibold">
-                    <span>Kas tunai seharusnya</span>
-                    <span>Rp {cashExpected.toLocaleString("id-ID")}</span>
+                <div className="space-y-3 rounded-md border border-zinc-800 bg-zinc-950 p-4 text-sm">
+                  <div className="flex justify-between gap-3 font-semibold text-zinc-100">
+                    <span>Perkiraan kas tunai</span>
+                    <span className="shrink-0 tabular-nums">Rp {cashExpected.toLocaleString("id-ID")}</span>
                   </div>
                   <p className="text-xs text-zinc-400">
-                    Kas awal + penjualan tunai − kas keluar. Hitung dan masukkan hanya uang fisik di laci.
+                    Kas awal + penjualan tunai − refund tunai − kas keluar. Hitung hanya uang fisik di laci.
                   </p>
+                  {cashRefund > 0 && (
+                    <div className="flex justify-between text-xs text-red-400">
+                      <span>Refund tunai (kas keluar)</span>
+                      <span>− Rp {cashRefund.toLocaleString("id-ID")}</span>
+                    </div>
+                  )}
+                  {nonCashRefund > 0 && (
+                    <div className="flex justify-between text-xs text-amber-400">
+                      <span>Refund non-tunai (tidak mengurangi laci)</span>
+                      <span>Rp {nonCashRefund.toLocaleString("id-ID")}</span>
+                    </div>
+                  )}
                   <div className="border-t border-zinc-800 pt-2">
                     <div className="mb-1 text-xs font-bold text-zinc-300">Non-tunai tercatat (tidak masuk laci)</div>
                     {nonCashMethods.map(method => (
@@ -294,64 +341,69 @@ export default function ShiftClient({ shifts, users, currentRole, currentUserId 
                 </div>
               )
             })()}
-            <div>
-              <label className="text-xs text-zinc-400">PIN Manager</label>
+            <label className="block text-xs text-zinc-400">
+              PIN manager
               <input type="password" inputMode="numeric" value={shiftPin} onChange={e => setShiftPin(e.target.value)}
-                className="w-full bg-zinc-800 border border-zinc-700 rounded-lg p-2 text-sm mt-1 focus:outline-none focus:border-emerald-500" />
-            </div>
-            <div>
-              <label className="text-xs text-zinc-400">Kas fisik dihitung (Rp)</label>
+                className={fieldClass} />
+            </label>
+            <label className="block text-xs text-zinc-400">
+              Kas fisik dihitung (Rp)
               <input type="number" min="0" step="1" value={kasHitung}
                 onChange={e => setKasHitung(e.target.value)}
-                className="w-full bg-zinc-800 border border-zinc-700 rounded-lg p-2 text-sm mt-1 focus:outline-none focus:border-emerald-500" />
+                className={fieldClass} />
               <p className="mt-1 text-xs text-zinc-500">Masukkan hanya uang fisik di laci. Jangan tambahkan QRIS, debit, transfer, atau kartu.</p>
+            </label>
+            <div className="flex justify-end gap-2 border-t border-zinc-800 pt-4">
+              <button onClick={() => { setPendingCloseId(null); setShiftPin("") }} className="h-10 rounded-md border border-zinc-700 px-4 text-sm font-medium text-zinc-300 hover:bg-zinc-800">Batal</button>
+              <button onClick={confirmCloseShift} disabled={loading} className="h-10 rounded-md bg-amber-600 px-4 text-sm font-medium text-white hover:bg-amber-500 disabled:opacity-50">{loading ? "Memproses..." : "Konfirmasi tutup shift"}</button>
             </div>
-            <div className="flex gap-2 pt-2">
-              <button onClick={() => { setPendingCloseId(null); setShiftPin('') }} className="px-4 py-2 bg-zinc-700 rounded-lg text-sm">Batal</button>
-              <button onClick={confirmCloseShift} disabled={loading} className="flex-1 bg-red-600 hover:bg-red-500 py-2 rounded-lg text-sm font-bold">Konfirmasi</button>
-            </div>
-          </div>
+          </section>
         </div>
       )}
 
       {/* Closed Shifts */}
       {closedShifts.length > 0 && (
         <div>
-          <h2 className="font-bold text-lg mb-3 text-zinc-400">Riwayat Shift</h2>
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead className="text-zinc-400 text-xs">
+          <section className="overflow-hidden rounded-lg border border-zinc-800 bg-zinc-900">
+            <div className="border-b border-zinc-800 px-4 py-3 sm:px-5">
+              <h2 className="text-base font-semibold text-zinc-100">Riwayat shift</h2>
+              <p className="mt-1 text-sm text-zinc-500">{closedShifts.length} shift selesai</p>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[760px] text-sm">
+              <thead className="bg-zinc-950 text-xs text-zinc-500">
                 <tr>
-                  <th className="text-left py-2">Kasir</th>
-                  <th className="text-left py-2">Waktu</th>
-                  <th className="text-right py-2">Kas Awal</th>
-                  <th className="text-right py-2">Penjualan</th>
-                  <th className="text-right py-2">Kas Keluar</th>
-                  <th className="text-right py-2">Kas Akhir</th>
-                  <th className="text-right py-2">Selisih</th>
+                  <th className="px-4 py-3 text-left font-medium">Kasir</th>
+                  <th className="px-4 py-3 text-left font-medium">Waktu</th>
+                  <th className="px-4 py-3 text-right font-medium">Kas awal</th>
+                  <th className="px-4 py-3 text-right font-medium">Penjualan</th>
+                  <th className="px-4 py-3 text-right font-medium">Kas keluar</th>
+                  <th className="px-4 py-3 text-right font-medium">Kas akhir</th>
+                  <th className="px-4 py-3 text-right font-medium">Selisih</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-zinc-800">
+              <tbody className="divide-y divide-zinc-800/80">
                 {closedShifts.map(s => (
-                  <tr key={s.id} className="hover:bg-zinc-800/50">
-                    <td className="py-2">{s.kasir?.nama}</td>
-                    <td className="py-2 text-xs">
-                      {new Date(s.waktuBuka).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })} - {s.waktuTutup ? new Date(s.waktuTutup).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) : ''}
+                  <tr key={s.id} className="transition-colors hover:bg-zinc-800/40">
+                    <td className="px-4 py-3 font-medium text-zinc-200">{s.kasir?.nama}</td>
+                    <td className="px-4 py-3 text-xs tabular-nums text-zinc-400">
+                      {new Date(s.waktuBuka).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" })} – {s.waktuTutup ? new Date(s.waktuTutup).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" }) : ""}
                     </td>
-                    <td className="py-2 text-right">Rp {s.kasAwal.toLocaleString('id-ID')}</td>
-                    <td className="py-2 text-right text-emerald-400">Rp {(s.totalPenjualan || 0).toLocaleString('id-ID')}</td>
-                    <td className="py-2 text-right text-red-400" title={s.catatanPengeluaran ?? undefined}>Rp {s.pengeluaran.toLocaleString('id-ID')}</td>
-                    <td className="py-2 text-right font-bold">
-                      {s.kasHitung == null ? 'Belum dihitung' : `Rp ${s.kasHitung.toLocaleString('id-ID')}`}
+                    <td className="px-4 py-3 text-right tabular-nums text-zinc-300">Rp {s.kasAwal.toLocaleString("id-ID")}</td>
+                    <td className="px-4 py-3 text-right tabular-nums text-zinc-300">Rp {(s.totalPenjualan || 0).toLocaleString("id-ID")}</td>
+                    <td className="px-4 py-3 text-right tabular-nums text-zinc-300" title={s.catatanPengeluaran ?? undefined}>Rp {s.pengeluaran.toLocaleString("id-ID")}</td>
+                    <td className="px-4 py-3 text-right font-medium tabular-nums text-zinc-100">
+                      {s.kasHitung == null ? <span className="text-zinc-500">Belum dihitung</span> : `Rp ${s.kasHitung.toLocaleString("id-ID")}`}
                     </td>
-                    <td className={`py-2 text-right font-bold ${s.selisih == null ? 'text-zinc-500' : s.selisih === 0 ? 'text-emerald-400' : 'text-amber-400'}`}>
-                      {s.selisih == null ? 'Belum dihitung' : `${s.selisih > 0 ? '+' : ''}Rp ${s.selisih.toLocaleString('id-ID')}`}
+                    <td className={`px-4 py-3 text-right font-medium tabular-nums ${s.selisih == null ? "text-zinc-500" : s.selisih === 0 ? "text-emerald-400" : "text-amber-400"}`}>
+                      {s.selisih == null ? "Belum dihitung" : `${s.selisih > 0 ? "+" : ""}Rp ${s.selisih.toLocaleString("id-ID")}`}
                     </td>
                   </tr>
                 ))}
               </tbody>
-            </table>
-          </div>
+              </table>
+            </div>
+          </section>
         </div>
       )}
     </div>

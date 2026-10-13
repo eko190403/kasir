@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/prisma"
 import { connection } from "next/server"
-import { Receipt, Banknote, Landmark, Percent, Download, CreditCard, Flame, Activity, ShieldAlert, History, Calendar, PieChart, Printer } from "lucide-react"
+import { Landmark, Download, CreditCard, Flame, Activity, ShieldAlert, History, Printer } from "lucide-react"
 
 import { getStartOfDayWIB, getEndOfDayWIB } from "@/lib/timezone"
 import { summarizeShiftCash } from "@/lib/shift-math"
@@ -127,185 +127,162 @@ export default async function SummaryPage({ searchParams }: { searchParams: Prom
 
   // Format YYYY-MM-DD for date input (uses local timezone to prevent off-by-one errors)
   const dateString = targetDate.toLocaleDateString('en-CA')
+  const panelClass = "rounded-lg border border-zinc-800 bg-zinc-900 p-4 sm:p-5"
+  const panelHeadingClass = "mb-4 flex items-center gap-2 border-b border-zinc-800 pb-3 text-base font-semibold text-zinc-100"
 
   return (
-    <main className="container mx-auto p-4 space-y-6">
-      <header className="flex flex-col md:flex-row justify-between md:items-center pb-4 border-b border-zinc-800 gap-4">
+    <main className="mx-auto w-full max-w-7xl space-y-5 px-4 py-5 sm:px-6">
+      <header className="flex flex-col gap-4 border-b border-zinc-800 pb-4 md:flex-row md:items-end md:justify-between">
         <div>
-          <h1 className="text-3xl font-bold flex items-center gap-3">
-            <PieChart className="w-8 h-8 text-amber-400" />
-            Ringkasan Laporan
-          </h1>
-          <span className="text-sm text-zinc-400">{targetDate.toLocaleDateString('id-ID', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</span>
+          <p className="mb-1 text-xs font-medium text-amber-400">LAPORAN HARIAN</p>
+          <h1 className="text-2xl font-semibold tracking-tight text-white">Ringkasan</h1>
+          <p className="mt-1 text-sm text-zinc-400">
+            {targetDate.toLocaleDateString('id-ID', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
+          </p>
         </div>
         
-        <form className="flex flex-wrap items-center gap-2">
-          <div className="relative">
-            <Calendar className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400" />
-            <input 
-              type="date" 
+        <form className="flex flex-wrap items-end gap-2">
+          <label className="flex flex-col gap-1 text-xs text-zinc-400">
+            Tanggal laporan
+            <input
+              type="date"
               name="date"
               defaultValue={dateString}
-              className="bg-zinc-800 border border-zinc-700 rounded-lg pl-9 pr-3 py-2 text-sm focus:outline-none focus:border-amber-500 text-white"
+              className="h-10 rounded-md border border-zinc-700 bg-zinc-900 px-3 text-sm text-white focus:border-amber-500 focus:outline-none"
             />
-          </div>
-          <button type="submit" className="px-4 py-2 bg-amber-600 hover:bg-amber-500 rounded-lg text-sm font-bold transition shadow-lg">
-            Filter
+          </label>
+          <button type="submit" className="h-10 rounded-md bg-amber-600 px-4 text-sm font-medium text-white transition-colors hover:bg-amber-500">
+            Tampilkan
           </button>
           <a
             href={`/print/eod?date=${dateString}`}
             target="_blank"
-            className="px-4 py-2 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 rounded-lg text-sm font-bold transition flex items-center gap-2 shadow-lg"
+            rel="noreferrer"
+            className="flex h-10 items-center gap-2 rounded-md border border-zinc-700 bg-zinc-900 px-3 text-sm font-medium text-zinc-300 transition-colors hover:bg-zinc-800 hover:text-white"
           >
-            <Printer className="w-4 h-4" /> Struk Thermal
+            <Printer className="h-4 w-4" /> Cetak
           </a>
           <a
             href={`/api/export-csv?date=${dateString}`}
-            className="px-4 py-2 bg-zinc-700 hover:bg-zinc-600 rounded-lg text-sm font-bold transition flex items-center gap-2 shadow-lg"
+            className="flex h-10 items-center gap-2 rounded-md border border-zinc-700 bg-zinc-900 px-3 text-sm font-medium text-zinc-300 transition-colors hover:bg-zinc-800 hover:text-white"
             download
           >
-            <Download className="w-4 h-4" /> CSV
+            <Download className="h-4 w-4" /> Ekspor CSV
           </a>
         </form>
       </header>
 
-      {/* Summary Cards */}
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-        <div className="bg-zinc-900 border border-zinc-800 p-5 rounded-2xl">
-          <div className="flex items-center gap-3 mb-2">
-            <div className="p-2 bg-zinc-800 rounded-lg text-zinc-300"><Receipt className="w-5 h-5" /></div>
-            <div className="text-zinc-400 text-xs font-semibold uppercase tracking-wider">Total Transaksi</div>
+      <section aria-label="Ringkasan penjualan" className="grid grid-cols-2 gap-px overflow-hidden rounded-lg border border-zinc-800 bg-zinc-800 sm:grid-cols-3 xl:grid-cols-5">
+        {[
+          { label: "Pendapatan kotor", value: `Rp ${totalPendapatan.toLocaleString('id-ID')}`, primary: true },
+          { label: "Transaksi lunas", value: bills.length.toLocaleString('id-ID') },
+          { label: "Rata-rata transaksi", value: `Rp ${Math.round(avgTicket).toLocaleString('id-ID')}` },
+          { label: "Pajak", value: `Rp ${totalPajak.toLocaleString('id-ID')}` },
+          { label: "Diskon", value: `Rp ${totalDiskon.toLocaleString('id-ID')}` },
+        ].map(({ label, value, primary }) => (
+          <div key={label} className="min-w-0 bg-zinc-900 px-4 py-4 sm:px-5">
+            <p className="mb-2 text-xs text-zinc-400">{label}</p>
+            <p className={`truncate tabular-nums ${primary ? "text-xl font-semibold text-amber-300" : "text-lg font-medium text-zinc-100"}`}>
+              {value}
+            </p>
           </div>
-          <div className="text-3xl font-black text-white">{bills.length}</div>
-        </div>
+        ))}
+      </section>
 
-        <div className="bg-zinc-900 border border-zinc-800 p-5 rounded-2xl">
-          <div className="flex items-center gap-3 mb-2">
-            <div className="p-2 bg-emerald-500/20 rounded-lg text-emerald-400"><Banknote className="w-5 h-5" /></div>
-            <div className="text-emerald-200 text-xs font-semibold uppercase tracking-wider">Total Pendapatan</div>
-          </div>
-          <div className="text-2xl font-black text-emerald-400">Rp {totalPendapatan.toLocaleString('id-ID')}</div>
-        </div>
-
-        <div className="bg-zinc-900 border border-zinc-800 p-5 rounded-2xl">
-          <div className="flex items-center gap-3 mb-2">
-            <div className="p-2 bg-zinc-800 rounded-lg text-zinc-300"><Activity className="w-5 h-5" /></div>
-            <div className="text-zinc-400 text-xs font-semibold uppercase tracking-wider">Avg Ticket</div>
-          </div>
-          <div className="text-2xl font-black text-white">Rp {Math.round(avgTicket).toLocaleString('id-ID')}</div>
-        </div>
-
-        <div className="bg-zinc-900 border border-zinc-800 p-5 rounded-2xl">
-          <div className="flex items-center gap-3 mb-2">
-            <div className="p-2 bg-amber-500/20 rounded-lg text-amber-400"><Landmark className="w-5 h-5" /></div>
-            <div className="text-amber-200 text-xs font-semibold uppercase tracking-wider">Total Pajak</div>
-          </div>
-          <div className="text-2xl font-black text-amber-400">Rp {totalPajak.toLocaleString('id-ID')}</div>
-        </div>
-
-        <div className="bg-zinc-900 border border-zinc-800 p-5 rounded-2xl">
-          <div className="flex items-center gap-3 mb-2">
-            <div className="p-2 bg-red-500/20 rounded-lg text-red-400"><Percent className="w-5 h-5" /></div>
-            <div className="text-red-200 text-xs font-semibold uppercase tracking-wider">Total Diskon</div>
-          </div>
-          <div className="text-2xl font-black text-red-400">Rp {totalDiskon.toLocaleString('id-ID')}</div>
-        </div>
-      </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
         {/* Payment Breakdown */}
-        <div className="bg-zinc-900 border border-zinc-800 p-6 rounded-2xl shadow-lg">
-          <h2 className="font-bold text-lg mb-4 border-b border-zinc-800 pb-3 flex items-center gap-2">
-            <CreditCard className="w-5 h-5 text-amber-400" />
+        <section className={panelClass}>
+          <h2 className={panelHeadingClass}>
+            <CreditCard className="h-4 w-4 text-amber-400" />
             Rincian Metode Bayar
           </h2>
-          <div className="space-y-3">
+          <div className="divide-y divide-zinc-800">
             {Object.entries(paymentBreakdown).map(([method, amount]) => (
-              <div key={method} className="flex justify-between items-center text-sm p-2 hover:bg-zinc-800/50 rounded-lg transition">
-                <span className="text-zinc-300">{method}</span>
-                <span className="font-bold text-white bg-zinc-800 px-3 py-1 rounded-full">Rp {amount.toLocaleString('id-ID')}</span>
+              <div key={method} className="flex items-center justify-between gap-4 py-3 text-sm">
+                <span className="text-zinc-400">{method}</span>
+                <span className="font-medium tabular-nums text-zinc-100">Rp {amount.toLocaleString('id-ID')}</span>
               </div>
             ))}
             {Object.keys(paymentBreakdown).length === 0 && (
-              <div className="text-zinc-500 italic text-sm text-center py-4">Belum ada transaksi hari ini.</div>
+              <div className="py-6 text-center text-sm text-zinc-500">Belum ada transaksi pada tanggal ini.</div>
             )}
           </div>
-        </div>
+        </section>
 
         {/* Financial Breakdown */}
-        <div className="bg-zinc-900 border border-zinc-800 p-6 rounded-2xl shadow-lg">
-          <h2 className="font-bold text-lg mb-4 border-b border-zinc-800 pb-3 flex items-center gap-2">
-            <Landmark className="w-5 h-5 text-amber-400" />
+        <section className={panelClass}>
+          <h2 className={panelHeadingClass}>
+            <Landmark className="h-4 w-4 text-amber-400" />
             Rincian Keuangan
           </h2>
-          <div className="space-y-3 text-sm">
-            <div className="flex justify-between items-center p-2">
+          <div className="space-y-0.5 text-sm">
+            <div className="flex items-center justify-between gap-4 py-2.5">
               <span className="text-zinc-400">Subtotal</span>
-              <span className="font-medium">Rp {totalSubtotal.toLocaleString('id-ID')}</span>
+              <span className="tabular-nums text-zinc-200">Rp {totalSubtotal.toLocaleString('id-ID')}</span>
             </div>
-            <div className="flex justify-between items-center p-2 bg-red-950/20 text-red-400 rounded-lg">
-              <span>Diskon</span>
-              <span className="font-medium">- Rp {totalDiskon.toLocaleString('id-ID')}</span>
+            <div className="flex items-center justify-between gap-4 py-2.5">
+              <span className="text-zinc-400">Diskon</span>
+              <span className="tabular-nums text-zinc-200">- Rp {totalDiskon.toLocaleString('id-ID')}</span>
             </div>
-            <div className="flex justify-between items-center p-2">
+            <div className="flex items-center justify-between gap-4 py-2.5">
               <span className="text-zinc-400">Service Charge</span>
-              <span className="font-medium">Rp {totalService.toLocaleString('id-ID')}</span>
+              <span className="tabular-nums text-zinc-200">Rp {totalService.toLocaleString('id-ID')}</span>
             </div>
-            <div className="flex justify-between items-center p-2">
+            <div className="flex items-center justify-between gap-4 py-2.5">
               <span className="text-zinc-400">Pajak</span>
-              <span className="font-medium">Rp {totalPajak.toLocaleString('id-ID')}</span>
+              <span className="tabular-nums text-zinc-200">Rp {totalPajak.toLocaleString('id-ID')}</span>
             </div>
-            <div className="flex justify-between items-center font-bold text-lg text-emerald-400 pt-3 border-t border-zinc-800">
+            <div className="mt-2 flex items-center justify-between gap-4 border-t border-zinc-800 pt-3 font-medium text-zinc-200">
               <span>Total Pendapatan (Gross)</span>
-              <span>Rp {totalPendapatan.toLocaleString('id-ID')}</span>
+              <span className="tabular-nums">Rp {totalPendapatan.toLocaleString('id-ID')}</span>
             </div>
             
-            <div className="flex justify-between items-center p-2 bg-amber-950/20 text-amber-400 rounded-lg mt-2">
-              <span>Kas Keluar (Petty Cash)</span>
-              <span className="font-medium">- Rp {totalPettyCash.toLocaleString('id-ID')}</span>
+            <div className="flex items-center justify-between gap-4 py-2.5">
+              <span className="text-zinc-400">Kas keluar</span>
+              <span className="tabular-nums text-zinc-200">- Rp {totalPettyCash.toLocaleString('id-ID')}</span>
             </div>
 
-            <div className="flex justify-between items-center font-bold text-xl text-white pt-3 border-t border-zinc-800 mt-2">
+            <div className="mt-2 flex items-center justify-between gap-4 border-t border-zinc-800 pt-3 text-base font-semibold text-amber-300">
               <span>Pendapatan Bersih (Netto)</span>
-              <span>Rp {(totalPendapatan - totalPettyCash - totalPajak - totalService).toLocaleString('id-ID')}</span>
+              <span className="tabular-nums">Rp {(totalPendapatan - totalPettyCash - totalPajak - totalService).toLocaleString('id-ID')}</span>
             </div>
           </div>
-        </div>
+        </section>
       </div>
 
-      <div className="bg-zinc-900 border border-zinc-800 p-6 rounded-2xl shadow-lg">
-        <h2 className="font-bold text-lg mb-4 border-b border-zinc-800 pb-3 flex items-center gap-2">
-          <Landmark className="w-5 h-5 text-amber-400" />
+      <section className={panelClass}>
+        <h2 className={panelHeadingClass}>
+          <Landmark className="h-4 w-4 text-amber-400" />
           Rekonsiliasi Kas
         </h2>
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-          <div className="bg-zinc-800 rounded-xl p-4">
-            <div className="text-xs uppercase tracking-[0.2em] text-zinc-400">Kas Awal</div>
-            <div className="mt-2 text-xl font-black text-white">Rp {totalOpeningCash.toLocaleString('id-ID')}</div>
+        <div className="grid grid-cols-1 gap-px overflow-hidden rounded-md border border-zinc-800 bg-zinc-800 sm:grid-cols-2 xl:grid-cols-4">
+          <div className="bg-zinc-950/50 p-4">
+            <div className="text-xs text-zinc-400">Kas awal</div>
+            <div className="mt-2 text-lg font-medium tabular-nums text-zinc-100">Rp {totalOpeningCash.toLocaleString('id-ID')}</div>
           </div>
-          <div className="bg-zinc-800 rounded-xl p-4">
-            <div className="text-xs uppercase tracking-[0.2em] text-zinc-400">Penjualan Tunai</div>
-            <div className="mt-2 text-xl font-black text-emerald-300">Rp {totalCashSales.toLocaleString('id-ID')}</div>
+          <div className="bg-zinc-950/50 p-4">
+            <div className="text-xs text-zinc-400">Penjualan tunai</div>
+            <div className="mt-2 text-lg font-medium tabular-nums text-zinc-100">Rp {totalCashSales.toLocaleString('id-ID')}</div>
           </div>
-          <div className="bg-zinc-800 rounded-xl p-4">
-            <div className="text-xs uppercase tracking-[0.2em] text-zinc-400">Kas Keluar</div>
-            <div className="mt-2 text-xl font-black text-red-300">- Rp {totalPettyCash.toLocaleString('id-ID')}</div>
+          <div className="bg-zinc-950/50 p-4">
+            <div className="text-xs text-zinc-400">Kas keluar</div>
+            <div className="mt-2 text-lg font-medium tabular-nums text-zinc-100">- Rp {totalPettyCash.toLocaleString('id-ID')}</div>
           </div>
-          <div className={`rounded-xl p-4 ${cashDifference === null ? 'bg-zinc-800' : cashDifference >= 0 ? 'bg-emerald-950/40 border border-emerald-500/30' : 'bg-red-950/40 border border-red-500/30'}`}>
-            <div className="text-xs uppercase tracking-[0.2em] text-zinc-300">Selisih</div>
-            <div className={`mt-2 text-xl font-black ${cashDifference === null ? 'text-zinc-400' : cashDifference >= 0 ? 'text-emerald-300' : 'text-red-300'}`}>
+          <div className="bg-zinc-950/50 p-4">
+            <div className="text-xs text-zinc-400">Selisih kas</div>
+            <div className={`mt-2 text-lg font-medium tabular-nums ${cashDifference === null ? 'text-zinc-400' : cashDifference >= 0 ? 'text-emerald-300' : 'text-red-300'}`}>
               {cashDifference === null ? 'Belum dihitung' : cashDifference >= 0 ? `+ Rp ${cashDifference.toLocaleString('id-ID')}` : `- Rp ${Math.abs(cashDifference).toLocaleString('id-ID')}`}
             </div>
             {cashDifference === null && <p className="mt-1 text-xs text-zinc-400">Tutup shift dan masukkan kas fisik untuk menghitung selisih.</p>}
           </div>
         </div>
-      </div>
+      </section>
 
       {/* Top Menu Terlaris */}
-      <div className="bg-zinc-900 border border-zinc-800 p-6 rounded-2xl shadow-lg">
-        <h2 className="font-bold text-lg mb-4 border-b border-zinc-800 pb-3 flex items-center gap-2">
-          <Flame className="w-5 h-5 text-amber-400" />
-          Top 10 Menu Terlaris
+      <section className={panelClass}>
+        <h2 className={panelHeadingClass}>
+          <Flame className="h-4 w-4 text-amber-400" />
+          Menu terlaris
         </h2>
         {topMenu.length === 0 ? (
           <div className="text-zinc-500 italic text-sm text-center py-4">Belum ada data hari ini.</div>
@@ -315,30 +292,25 @@ export default async function SummaryPage({ searchParams }: { searchParams: Prom
               const maxQty = topMenu[0].qty;
               const pct = maxQty > 0 ? Math.round((m.qty / maxQty) * 100) : 0;
               return (
-                <div key={m.nama} className="group">
-                  <div className="flex justify-between text-sm mb-2">
-                    <span className="flex items-center gap-3">
-                      <span className="flex items-center justify-center w-6 h-6 rounded-full bg-zinc-800 text-zinc-400 text-xs font-bold">{idx + 1}</span>
-                      <span className="font-medium text-zinc-200 group-hover:text-white transition">{m.nama}</span>
-                      <span className="bg-amber-500/20 text-amber-400 font-bold text-xs px-2 py-0.5 rounded-full">{m.qty} porsi</span>
-                    </span>
-                    <span className="text-zinc-400 font-medium">Rp {m.total.toLocaleString('id-ID')}</span>
-                  </div>
-                  <div className="w-full bg-zinc-800 rounded-full h-2 overflow-hidden">
-                    <div className="bg-amber-500 h-full rounded-full transition-all duration-1000 ease-out" style={{ width: `${pct}%` }} />
-                  </div>
+                <div key={m.nama} className="grid grid-cols-[2rem_minmax(0,1fr)_auto] items-center gap-x-3 gap-y-2 text-sm">
+                  <span className="text-xs tabular-nums text-zinc-500">{String(idx + 1).padStart(2, "0")}</span>
+                  <span className="min-w-0 truncate font-medium text-zinc-200">{m.nama}</span>
+                  <span className="text-right text-zinc-400">{m.qty} porsi <span className="ml-2 font-medium tabular-nums text-zinc-200">Rp {m.total.toLocaleString('id-ID')}</span></span>
+                  <span className="col-start-2 col-span-2 h-1 overflow-hidden rounded-full bg-zinc-800">
+                    <span className="block h-full rounded-full bg-amber-500/80" style={{ width: `${pct}%` }} />
+                  </span>
                 </div>
               )
             })}
           </div>
         )}
-      </div>
+      </section>
 
       {/* Sofa Performance */}
-      <div className="bg-zinc-900 border border-zinc-800 p-6 rounded-2xl shadow-lg">
-        <h2 className="font-bold text-lg mb-4 border-b border-zinc-800 pb-3 flex items-center gap-2">
-          <Activity className="w-5 h-5 text-amber-400" />
-          Kinerja per Sofa/Area
+      <section className={panelClass}>
+        <h2 className={panelHeadingClass}>
+          <Activity className="h-4 w-4 text-amber-400" />
+          Penjualan per meja/area
         </h2>
         {sofaPerfSorted.length === 0 ? (
           <div className="text-zinc-500 italic text-sm text-center py-4">Belum ada data hari ini.</div>
@@ -347,53 +319,48 @@ export default async function SummaryPage({ searchParams }: { searchParams: Prom
             {sofaPerfSorted.map((s, idx) => {
               const pct = totalPendapatan > 0 ? Math.round((s.total / totalPendapatan) * 100) : 0
               return (
-                <div key={s.nama} className="group">
-                  <div className="flex justify-between text-sm mb-2">
-                    <span className="flex items-center gap-3">
-                      <span className="flex items-center justify-center w-6 h-6 rounded-full bg-zinc-800 text-zinc-400 text-xs font-bold">{idx + 1}</span>
-                      <span className="font-medium text-zinc-200 group-hover:text-white transition">{s.nama}</span>
-                      <span className="bg-zinc-800 text-zinc-300 text-xs px-2 py-0.5 rounded-full">{s.transaksi} transaksi</span>
-                      <span className="text-zinc-500 text-xs">Rata-rata: Rp {Math.round(s.total / s.transaksi).toLocaleString('id-ID')}</span>
-                    </span>
-                    <span className="font-bold text-emerald-400">Rp {s.total.toLocaleString('id-ID')}</span>
-                  </div>
-                  <div className="w-full bg-zinc-800 rounded-full h-2 overflow-hidden">
-                    <div className="bg-amber-500 h-full rounded-full transition-all duration-1000 ease-out" style={{ width: `${pct}%` }} />
-                  </div>
+                <div key={s.nama} className="grid grid-cols-[2rem_minmax(0,1fr)_auto] items-center gap-x-3 gap-y-2 text-sm">
+                  <span className="text-xs tabular-nums text-zinc-500">{String(idx + 1).padStart(2, "0")}</span>
+                  <span className="min-w-0 truncate font-medium text-zinc-200">{s.nama}</span>
+                  <span className="text-right font-medium tabular-nums text-zinc-200">Rp {s.total.toLocaleString('id-ID')}</span>
+                  <span className="col-start-2 text-xs text-zinc-500">{s.transaksi} transaksi · Rata-rata Rp {Math.round(s.total / s.transaksi).toLocaleString('id-ID')}</span>
+                  <span className="col-start-2 col-span-2 h-1 overflow-hidden rounded-full bg-zinc-800">
+                    <span className="block h-full rounded-full bg-amber-500/80" style={{ width: `${pct}%` }} />
+                  </span>
                 </div>
               )
             })}
           </div>
         )}
-      </div>
+      </section>
 
       {/* Recent Transactions */}
-      <div className="bg-zinc-900 border border-zinc-800 p-6 rounded-2xl shadow-lg">
-        <h2 className="font-bold text-lg mb-4 border-b border-zinc-800 pb-3 flex items-center gap-2">
-          <History className="w-5 h-5 text-amber-400" />
-          Transaksi Terbaru
+      <section className={panelClass}>
+        <h2 className={panelHeadingClass}>
+          <History className="h-4 w-4 text-amber-400" />
+          Transaksi
         </h2>
         <div className="overflow-x-auto">
           <table className="w-full text-sm text-left">
-            <thead className="text-zinc-400 text-xs uppercase bg-zinc-800/50 rounded-lg">
+            <thead className="border-b border-zinc-800 text-xs text-zinc-500">
               <tr>
-                <th className="px-4 py-3 rounded-l-lg">Waktu</th>
-                <th className="px-4 py-3">Sofa/Tipe</th>
-                <th className="px-4 py-3 text-right">Subtotal</th>
-                <th className="px-4 py-3 text-right">Diskon</th>
-                <th className="px-4 py-3 text-right">Total</th>
-                <th className="px-4 py-3 rounded-r-lg">Bayar</th>
+                <th className="px-3 py-3 font-medium">Waktu</th>
+                <th className="px-3 py-3 font-medium">Meja / jenis</th>
+                <th className="px-3 py-3 text-right font-medium">Subtotal</th>
+                <th className="px-3 py-3 text-right font-medium">Diskon</th>
+                <th className="px-3 py-3 text-right font-medium">Total</th>
+                <th className="px-3 py-3 font-medium">Pembayaran</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-zinc-800">
               {bills.map(bill => (
-                <tr key={bill.id} className="hover:bg-zinc-800/30 transition">
-                  <td className="px-4 py-3 whitespace-nowrap text-zinc-300">{bill.waktuTutup ? new Date(bill.waktuTutup).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) : '-'}</td>
-                  <td className="px-4 py-3 font-medium text-white">{bill.sofa?.nama || bill.tipe.replace('_', ' ')}</td>
-                  <td className="px-4 py-3 text-right text-zinc-300">Rp {bill.subtotal.toLocaleString('id-ID')}</td>
-                  <td className="px-4 py-3 text-right text-red-400">{bill.diskon > 0 ? `- Rp ${bill.diskon.toLocaleString('id-ID')}` : '-'}</td>
-                  <td className="px-4 py-3 text-right font-bold text-emerald-400">Rp {bill.total.toLocaleString('id-ID')}</td>
-                  <td className="px-4 py-3 whitespace-nowrap"><span className="bg-zinc-800 px-2 py-1 rounded-md text-xs font-semibold">{bill.metodeBayar || '-'}</span></td>
+                <tr key={bill.id} className="transition-colors hover:bg-zinc-800/40">
+                  <td className="whitespace-nowrap px-3 py-3 tabular-nums text-zinc-400">{bill.waktuTutup ? new Date(bill.waktuTutup).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) : '-'}</td>
+                  <td className="px-3 py-3 font-medium text-zinc-200">{bill.sofa?.nama || bill.tipe.replace('_', ' ')}</td>
+                  <td className="px-3 py-3 text-right tabular-nums text-zinc-400">Rp {bill.subtotal.toLocaleString('id-ID')}</td>
+                  <td className="px-3 py-3 text-right tabular-nums text-zinc-400">{bill.diskon > 0 ? `- Rp ${bill.diskon.toLocaleString('id-ID')}` : '-'}</td>
+                  <td className="px-3 py-3 text-right font-medium tabular-nums text-zinc-100">Rp {bill.total.toLocaleString('id-ID')}</td>
+                  <td className="whitespace-nowrap px-3 py-3 text-zinc-400">{bill.metodeBayar || '-'}</td>
                 </tr>
               ))}
               {bills.length === 0 && (
@@ -402,73 +369,72 @@ export default async function SummaryPage({ searchParams }: { searchParams: Prom
             </tbody>
           </table>
         </div>
-      </div>
+      </section>
 
       {/* Void & Comp Log */}
-      <div className="bg-zinc-900 border border-red-900/30 p-6 rounded-2xl shadow-lg relative overflow-hidden">
-        <div className="absolute top-0 right-0 p-10 bg-red-500/5 rounded-full blur-3xl pointer-events-none" />
-        <h2 className="font-bold text-lg mb-4 border-b border-zinc-800 pb-3 flex items-center gap-2">
-          <ShieldAlert className="w-5 h-5 text-red-400" />
-          <span className="text-red-100">Log Void & Comp</span>
+      <section className={panelClass}>
+        <h2 className={panelHeadingClass}>
+          <ShieldAlert className="h-4 w-4 text-red-400" />
+          <span>Log void dan comp</span>
           {voidCompItems.length > 0 && (
-            <span className="ml-auto text-xs bg-red-500/20 text-red-300 px-3 py-1 rounded-full font-bold">{voidCompItems.length} item</span>
+            <span className="ml-auto text-xs font-medium text-zinc-400">{voidCompItems.length} item</span>
           )}
         </h2>
         {voidCompItems.length === 0 ? (
-          <div className="text-zinc-500 italic text-sm text-center py-4">Tidak ada item yang di-Void atau Comp hari ini. 👍</div>
+          <div className="py-5 text-center text-sm text-zinc-500">Tidak ada item void atau comp pada tanggal ini.</div>
         ) : (
-          <div className="overflow-x-auto relative z-10">
+          <div className="overflow-x-auto">
             <table className="w-full text-sm text-left">
-              <thead className="text-zinc-400 text-xs uppercase bg-zinc-800/50 rounded-lg">
+              <thead className="border-b border-zinc-800 text-xs text-zinc-500">
                 <tr>
-                  <th className="px-4 py-3 rounded-l-lg">Item</th>
-                  <th className="px-4 py-3">Sofa</th>
-                  <th className="px-4 py-3">Tipe</th>
-                  <th className="px-4 py-3 text-right">Harga</th>
-                  <th className="px-4 py-3 rounded-r-lg">Alasan</th>
+                  <th className="px-3 py-3 font-medium">Item</th>
+                  <th className="px-3 py-3 font-medium">Meja</th>
+                  <th className="px-3 py-3 font-medium">Jenis</th>
+                  <th className="px-3 py-3 text-right font-medium">Harga</th>
+                  <th className="px-3 py-3 font-medium">Alasan</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-zinc-800">
                 {voidCompItems.map(item => (
-                  <tr key={item.id} className="hover:bg-zinc-800/30 transition">
-                    <td className="px-4 py-3 font-medium text-zinc-200">{item.qty}x {item.namaItem}</td>
-                    <td className="px-4 py-3 text-zinc-400">{item.bill.sofa?.nama || 'Take Away'}</td>
-                    <td className="px-4 py-3">
-                      <span className={`text-xs px-2 py-1 rounded-md font-bold uppercase tracking-wider ${item.isVoid ? 'bg-red-500/20 text-red-400 border border-red-500/20' : 'bg-amber-500/20 text-amber-400 border border-amber-500/20'}`}>
+                  <tr key={item.id} className="transition-colors hover:bg-zinc-800/40">
+                    <td className="px-3 py-3 font-medium text-zinc-200">{item.qty}x {item.namaItem}</td>
+                    <td className="px-3 py-3 text-zinc-400">{item.bill.sofa?.nama || 'Bawa pulang'}</td>
+                    <td className="px-3 py-3">
+                      <span className={`text-xs font-medium ${item.isVoid ? 'text-red-300' : 'text-amber-300'}`}>
                         {item.isVoid ? 'VOID' : 'COMP'}
                       </span>
                     </td>
-                    <td className="px-4 py-3 text-right line-through text-zinc-500">Rp {(item.harga * item.qty).toLocaleString('id-ID')}</td>
-                    <td className="px-4 py-3 text-zinc-400 text-xs italic">{item.alasanVoidComp || '-'}</td>
+                    <td className="px-3 py-3 text-right tabular-nums text-zinc-500">Rp {(item.harga * item.qty).toLocaleString('id-ID')}</td>
+                    <td className="px-3 py-3 text-zinc-400">{item.alasanVoidComp || '-'}</td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
         )}
-      </div>
+      </section>
 
       {/* Audit Logs */}
-      <div className="bg-zinc-900 border border-zinc-800 p-6 rounded-2xl shadow-lg">
-        <h2 className="font-bold text-lg mb-4 border-b border-zinc-800 pb-3 flex items-center gap-2">
-          <History className="w-5 h-5 text-zinc-400" />
-          Audit Log Hari Ini
+      <section className={panelClass}>
+        <h2 className={panelHeadingClass}>
+          <History className="h-4 w-4 text-zinc-400" />
+          Riwayat aktivitas
         </h2>
         <div className="space-y-1 max-h-64 overflow-y-auto pr-2 custom-scrollbar">
           {auditLogs.map(log => (
-            <div key={log.id} className="text-xs flex gap-4 py-2.5 px-3 hover:bg-zinc-800/50 rounded-lg transition">
-              <span className="text-zinc-500 shrink-0 font-mono">{new Date(log.waktu).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}</span>
-              <span className={`font-bold shrink-0 w-24 ${log.aksi === 'RETURN_ITEM' ? 'text-red-400' : log.aksi === 'CLOSE_BILL' ? 'text-emerald-400' : 'text-amber-400'}`}>
+            <div key={log.id} className="flex gap-3 border-b border-zinc-800/70 py-2.5 text-xs last:border-0">
+              <span className="shrink-0 font-mono tabular-nums text-zinc-500">{new Date(log.waktu).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}</span>
+              <span className={`w-32 shrink-0 font-medium ${log.aksi === 'RETURN_ITEM' ? 'text-red-300' : log.aksi === 'CLOSE_BILL' ? 'text-emerald-300' : 'text-amber-300'}`}>
                 {log.aksi}
               </span>
-              <span className="text-zinc-300 truncate">{JSON.stringify(log.detail)}</span>
+              <span className="min-w-0 truncate text-zinc-400">{JSON.stringify(log.detail)}</span>
             </div>
           ))}
           {auditLogs.length === 0 && (
-            <div className="text-zinc-500 italic text-sm text-center py-4">Belum ada log hari ini.</div>
+            <div className="py-5 text-center text-sm text-zinc-500">Belum ada aktivitas pada tanggal ini.</div>
           )}
         </div>
-      </div>
+        </section>
     </main>
   )
 }
